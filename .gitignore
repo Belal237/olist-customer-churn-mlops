@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+
+# Docker
+*.log
+docker-compose.override.yml
+
+# Data
+src/data/*.csv
+src/data/*.zip
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
