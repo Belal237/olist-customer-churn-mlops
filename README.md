@@ -1,7 +1,7 @@
 # Olist-Project
 
 ## Objectif
-Pipeline ML + API FastAPI pour prédire le churn client sur le dataset Olist.
+ML pipeline + FastAPI to predict customer churn using the Olist dataset.
 
 ## Stack
 - PostgreSQL (Docker)
@@ -10,7 +10,7 @@ Pipeline ML + API FastAPI pour prédire le churn client sur le dataset Olist.
 - Docker Compose
 - XGBoost pour P1
 
-## Structure prévue
+## Global Structure
 - src/
   - data/
   - features/
