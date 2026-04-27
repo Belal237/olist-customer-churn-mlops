@@ -5,13 +5,12 @@ FastAPI, Docker, MLflow, LLM agents (in progress).
 
 ## Tech Stack
 - **Database**: PostgreSQL 15 (Docker)
-- **Language**: Python 3.13
+- **Language**: Python 3.11.9
 - **ML**: XGBoost, MLflow
 - **API**: FastAPI
 - **Infra**: Docker, GitHub Actions
 - **LLM**: RAG + Agents (Phase 3)
 
-* **Language**: Python 3.11.9
 
 ## Project Structure
 
