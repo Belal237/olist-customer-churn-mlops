@@ -11,6 +11,8 @@ FastAPI, Docker, MLflow, LLM agents (in progress).
 - **Infra**: Docker, GitHub Actions
 - **LLM**: RAG + Agents (Phase 3)
 
+* **Language**: Python 3.11.9
+
 ## Project Structure
 
 - src/

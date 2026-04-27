@@ -5,7 +5,6 @@ __pycache__/
 *.pyd
 venv/
 .env
-.python-version
 
 # Docker
 *.log
