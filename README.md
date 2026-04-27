@@ -23,6 +23,37 @@ FastAPI, Docker, MLflow, LLM agents (in progress).
 - README.md
 - requirements.txt
 
+## Tests
+
+Run the test suite:
+
+```bash
+pytest -v
+```
+
+Run with coverage report:
+
+```bash
+pytest -v --cov=src/features --cov-report=term-missing
+```
+
+### Current coverage
+
+| Module | Coverage |
+|--------|----------|
+| `src/features/build.py` | 92% |
+| `src/features/sql_features.py` | — (requires PostgreSQL) |
+
+### Test structure
+
+```
+tests/
+├── __init__.py
+└── unit/
+    ├── __init__.py
+    └── test_build.py    # 11 tests — feature engineering pipeline
+```
+
 ## Quickstart
 ```bash
 # 1. Start PostgreSQL
@@ -35,7 +66,13 @@ pip install -r requirements.txt
 python src/data/load.py
 
 # 4. Build RFM features
+python src/data/sql_features.py
+
+# 5. Build engineered features
 python src/features/build.py
+
+# 6. Run tests
+pytest -v
 ```
 
 ## Roadmap

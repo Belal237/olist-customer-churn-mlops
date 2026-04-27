@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 venv/
 .env
+.python-version
 
 # Docker
 *.log
@@ -21,3 +22,8 @@ src/data/processed/*.parquet
 
 # OS
 .DS_Store
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
