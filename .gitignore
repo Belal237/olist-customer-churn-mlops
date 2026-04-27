@@ -11,8 +11,9 @@ venv/
 docker-compose.override.yml
 
 # Data
-src/data/*.csv
+src/data/raw/*.csv
 src/data/*.zip
+src/data/processed/*.parquet
 
 # IDEs
 .vscode/
