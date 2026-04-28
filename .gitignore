@@ -10,10 +10,9 @@ venv/
 *.log
 docker-compose.override.yml
 
-# Data
-src/data/raw/*.csv
-src/data/*.zip
-src/data/processed/*.parquet
+# Data — jamais commiter les données
+data/raw/
+data/processed/
 
 # IDEs
 .vscode/
@@ -26,3 +25,4 @@ src/data/processed/*.parquet
 .coverage
 .coverage.*
 htmlcov/
+.pytest_cache/

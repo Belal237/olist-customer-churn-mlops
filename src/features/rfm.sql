@@ -60,7 +60,7 @@ customer_rfm_metrics AS (
         d.customer_unique_id,
 
         -- Recency: days since last purchase
-        (rd.ref_dt - MAX(d.order_date))         AS recency_days,
+        ((SELECT ref_dt FROM reference_date)- MAX(d.order_date))         AS recency_days,
 
         -- Frequency: number of distinct orders
         COUNT(DISTINCT d.order_id)              AS frequency,
