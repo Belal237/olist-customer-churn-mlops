@@ -25,4 +25,6 @@ data/processed/
 .coverage
 .coverage.*
 htmlcov/
-.pytest_cache/
+.pytest_cache/mlruns/
+mlflow.db
+mlruns/
