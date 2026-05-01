@@ -1,104 +1,83 @@
--- ============================================================
--- RFM Features + Churn Label
--- Dataset  : Olist Brazilian E-Commerce
--- Scope    : 'delivered' orders only
--- Ref date : MAX(order_purchase_timestamp) — never use NOW()
--- Churn    : no purchase in the last :churn_days before ref date
--- Monetary : payment_value (actual amount paid, includes discounts)
--- ============================================================
-
 WITH
 
--- Step 1: Fixed reference date
--- Using MAX() ensures full reproducibility — the label never changes
--- depending on when the pipeline runs.
-reference_date AS (
-    SELECT MAX(order_purchase_timestamp::DATE) AS ref_dt
+-- Cutoff : point de séparation features / label
+-- On prend ref_date - churn_days comme date de coupure
+reference_dates AS (
+    SELECT
+        MAX(order_purchase_timestamp::DATE) AS ref_dt,
+        MAX(order_purchase_timestamp::DATE) - CAST(:churn_days AS INT) AS cutoff_dt
     FROM orders
     WHERE order_status = 'delivered'
 ),
 
--- Step 2: Delivered orders with actual payment value
--- order_payments.payment_value is used instead of price + freight_value
--- because it reflects what the customer actually paid (after discounts/vouchers).
-delivered_orders AS (
+-- Delivered orders AVANT le cutoff → sert à calculer les features
+delivered_before_cutoff AS (
     SELECT
         o.order_id,
         c.customer_unique_id,
         o.order_purchase_timestamp::DATE AS order_date,
         op.payment_value
     FROM orders o
-    JOIN customers c
-        ON o.customer_id = c.customer_id
-    JOIN order_payments op
-        ON o.order_id = op.order_id
+    JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_payments op ON o.order_id = op.order_id
+    CROSS JOIN reference_dates rd
     WHERE o.order_status = 'delivered'
+      AND o.order_purchase_timestamp::DATE < rd.cutoff_dt  -- ← AVANT le cutoff
 ),
 
--- Step 3: Days between consecutive orders per customer (LAG)
--- Window functions cannot be nested inside aggregates —
--- they must be computed in a separate CTE first.
+-- LAG sur la fenêtre features uniquement
 orders_with_lag AS (
     SELECT
         customer_unique_id,
         order_id,
         order_date,
         payment_value,
-        (
-            order_date
-            - LAG(order_date) OVER (
-                PARTITION BY customer_unique_id
-                ORDER BY order_date
-            )
+        order_date - LAG(order_date) OVER (
+            PARTITION BY customer_unique_id ORDER BY order_date
         ) AS days_since_previous_order
-    FROM delivered_orders
+    FROM delivered_before_cutoff
 ),
 
--- Step 4: RFM aggregates per unique customer
+-- RFM calculé sur la fenêtre features
 customer_rfm_metrics AS (
     SELECT
         d.customer_unique_id,
-
-        -- Recency: days since last purchase
-        ((SELECT ref_dt FROM reference_date)- MAX(d.order_date))         AS recency_days,
-
-        -- Frequency: number of distinct orders
-        COUNT(DISTINCT d.order_id)              AS frequency,
-
-        -- Monetary: total actual spend
-        ROUND(SUM(d.payment_value)::NUMERIC, 2) AS monetary,
-
-        -- Customer lifetime: span between first and last order
-        (MAX(d.order_date) - MIN(d.order_date)) AS customer_lifetime_days,
-
-        -- Avg gap between orders (NULL for one-time buyers → filled in Step 5)
-        ROUND(AVG(d.days_since_previous_order)::NUMERIC, 1)
-                                                AS avg_days_between_orders
-
+        (rd.cutoff_dt - MAX(d.order_date))              AS recency_days,
+        COUNT(DISTINCT d.order_id)                      AS frequency,
+        ROUND(SUM(d.payment_value)::NUMERIC, 2)         AS monetary,
+        (MAX(d.order_date) - MIN(d.order_date))         AS customer_lifetime_days,
+        ROUND(AVG(d.days_since_previous_order)::NUMERIC, 1) AS avg_days_between_orders
     FROM orders_with_lag d
-    CROSS JOIN reference_date rd
-    GROUP BY d.customer_unique_id
+    CROSS JOIN reference_dates rd
+    GROUP BY d.customer_unique_id, rd.cutoff_dt
 ),
 
--- Step 5: Churn label + NULL handling
--- :churn_days is a bound parameter passed from Python — never hardcoded.
--- >= is used (not >) so that exactly :churn_days days counts as churned.
--- avg_days_between_orders is 0 for one-time buyers (no gap to compute).
+-- Clients actifs APRES le cutoff → ils ne sont PAS churners
+active_after_cutoff AS (
+    SELECT DISTINCT c.customer_unique_id
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    CROSS JOIN reference_dates rd
+    WHERE o.order_status = 'delivered'
+      AND o.order_purchase_timestamp::DATE >= rd.cutoff_dt  -- ← APRES le cutoff
+),
+
+-- Label : churner = existait avant le cutoff ET absent après
 customer_churn_labels AS (
     SELECT
-        customer_unique_id,
-        recency_days,
-        frequency,
-        monetary,
-        customer_lifetime_days,
-        COALESCE(avg_days_between_orders, 0) AS avg_days_between_orders,
+        r.customer_unique_id,
+        r.recency_days,
+        r.frequency,
+        r.monetary,
+        r.customer_lifetime_days,
+        COALESCE(r.avg_days_between_orders, 0) AS avg_days_between_orders,
         CASE
-            WHEN recency_days >= :churn_days THEN 1
+            WHEN a.customer_unique_id IS NULL THEN 1  -- absent après cutoff → churner
             ELSE 0
-        END                                  AS churn_label
-    FROM customer_rfm_metrics
+        END AS churn_label
+    FROM customer_rfm_metrics r
+    LEFT JOIN active_after_cutoff a ON r.customer_unique_id = a.customer_unique_id
 )
 
-SELECT *
-FROM customer_churn_labels
+SELECT * FROM customer_churn_labels
 ORDER BY recency_days ASC;
