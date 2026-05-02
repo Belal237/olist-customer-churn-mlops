@@ -42,7 +42,7 @@ DATABASE_URL = (
 # - median recency = 218 days
 # - 90-day threshold  → 80.1% churn rate (too imbalanced for ML)
 # - 180-day threshold → 58.9% churn rate (acceptable class balance)
-CHURN_DAYS: int = 180
+CHURN_DAYS: int = 90
 
 
 def get_engine():

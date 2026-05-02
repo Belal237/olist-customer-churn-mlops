@@ -80,4 +80,5 @@ customer_churn_labels AS (
 )
 
 SELECT * FROM customer_churn_labels
+WHERE frequency >= 2  -- churn only meaningful for repeat customers
 ORDER BY recency_days ASC;
