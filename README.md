@@ -4,6 +4,7 @@ End-to-end ML system predicting customer churn on Olist e-commerce data —
 FastAPI, Docker, MLflow, LLM agents (in progress).
 
 ## Tech Stack
+
 - **Database**: PostgreSQL 15 (Docker)
 - **Language**: Python 3.11.9
 - **ML**: XGBoost, MLflow
@@ -11,30 +12,112 @@ FastAPI, Docker, MLflow, LLM agents (in progress).
 - **Infra**: Docker, GitHub Actions
 - **LLM**: RAG + Agents (Phase 3)
 
+## Architecture
+
+```
+Kaggle (raw CSV)
+    └── src/data/load.py
+            └── PostgreSQL (olist_db)
+                    └── src/features/sql_features.py + rfm.sql
+                            └── data/processed/rfm_features.parquet
+                                    └── src/features/build.py
+                                            └── data/processed/features.parquet
+                                                    └── src/models/train.py
+                                                            └── MLflow Registry (models:/churn-prediction/latest)
+                                                                    └── src/api/main.py (FastAPI)
+                                                                            ├── GET  /health
+                                                                            ├── POST /predict
+                                                                            └── POST /batch-predict 
+```
 
 ## Project Structure
 
-- src/
-  - data/  # Data loading and validation
-  - features/ # Feature engineering (RFM)
-  - models/ # Model training and evaluation
-  - api/ # FastAPI prediction service
-- tests/ # Unit and integration tests
-- docker-compose.yml
-- README.md
-- requirements.txt
+```
+src/
+├── data/       # Data loading and SQL feature extraction
+├── features/   # Feature engineering (RFM + Pydantic validation)
+├── models/     # Model training and MLflow logging
+└── api/        # FastAPI prediction service
+tests/
+└── unit/       # Unit tests (pytest)
+docker-compose.yml
+requirements.txt
+```
 
-## Tests
-
-Run the test suite:
+## Quickstart
 
 ```bash
+# 1. Start PostgreSQL
+docker compose up -d
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Load dataset into PostgreSQL
+python src/data/load.py
+
+# 4. Extract RFM features from PostgreSQL
+python src/features/sql_features.py
+
+# 5. Build engineered features
+python src/features/build.py
+
+# 6. Train the model and log to MLflow
+python src/models/train.py
+
+# 7. View MLflow results
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+# open http://localhost:5000
+
+# 8. Start the API
+uvicorn src.api.main:app --reload
+# open http://localhost:8000/docs
+
+# 9. Run tests
 pytest -v
 ```
 
-Run with coverage report:
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Service status + model version |
+| POST | `/predict` | Churn probability for a single customer |
+| POST | `/batch-predict` | Churn scores for a list of customers (S6) |
 
 ```bash
+# Health check
+curl http://localhost:8000/health
+
+# Single prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"customer_id": "142dc6250eac579893595d9889411834"}'
+```
+
+## MLflow
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```
+
+Open http://localhost:5000 to compare runs and manage model versions.
+
+### Latest run metrics
+
+| Metric | Value |
+|--------|-------|
+| AUC | 0.797 |
+| Precision | 0.990 |
+| Recall | 0.890 |
+
+## Tests
+
+```bash
+# Run test suite
+pytest -v
+
+# Run with coverage report
 pytest -v --cov=src/features --cov-report=term-missing
 ```
 
@@ -55,33 +138,6 @@ tests/
     └── test_build.py    # 11 tests — feature engineering pipeline
 ```
 
-## Quickstart
-```bash
-# 1. Start PostgreSQL
-docker compose up -d
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Load dataset into PostgreSQL
-python src/data/load.py
-
-# 4. Build RFM features
-python src/features/sql_features.py
-
-# 5. Build engineered features
-python src/features/build.py
-
-# 6. Train the model and log to MLflow
-python src/models/train.py
-
-# 7. View MLflow results
-mlflow ui  # open http://localhost:5000
-
-# 8. Run tests
-pytest -v
-```
-
 ## Roadmap
 
 | Phase | Scope | Status |
@@ -90,7 +146,6 @@ pytest -v
 | P2 — Cloud + LLM intro | AWS/GCP + Terraform + Orchestration | ⬜ Pending |
 | P3 — MLOps + Agents | MLflow + RAG + Tool calling + Guardrails | ⬜ Pending |
 | P4 — Senior architecture | RFC + Red-teaming + FinOps + Observability | ⬜ Pending |
-
 
 ## Data & Modeling Decisions
 
