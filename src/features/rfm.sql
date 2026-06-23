@@ -1,7 +1,7 @@
 WITH
 
--- Cutoff : point de séparation features / label
--- On prend ref_date - churn_days comme date de coupure
+-- Cutoff: separation point between features and label windows
+-- Features are computed on orders BEFORE cutoff_date (ref_date - churn_days)
 reference_dates AS (
     SELECT
         MAX(order_purchase_timestamp::DATE) AS ref_dt,
@@ -10,7 +10,7 @@ reference_dates AS (
     WHERE order_status = 'delivered'
 ),
 
--- Delivered orders AVANT le cutoff → sert à calculer les features
+-- Delivered orders BEFORE the cutoff → used to compute features
 delivered_before_cutoff AS (
     SELECT
         o.order_id,
@@ -22,10 +22,10 @@ delivered_before_cutoff AS (
     JOIN order_payments op ON o.order_id = op.order_id
     CROSS JOIN reference_dates rd
     WHERE o.order_status = 'delivered'
-      AND o.order_purchase_timestamp::DATE < rd.cutoff_dt  -- ← AVANT le cutoff
+      AND o.order_purchase_timestamp::DATE < rd.cutoff_dt  -- ← BEFORE the cutoff
 ),
 
--- LAG sur la fenêtre features uniquement
+-- LAG computed on the feature window only
 orders_with_lag AS (
     SELECT
         customer_unique_id,
@@ -38,7 +38,7 @@ orders_with_lag AS (
     FROM delivered_before_cutoff
 ),
 
--- RFM calculé sur la fenêtre features
+-- RFM calculated on windows features
 customer_rfm_metrics AS (
     SELECT
         d.customer_unique_id,
@@ -52,17 +52,17 @@ customer_rfm_metrics AS (
     GROUP BY d.customer_unique_id, rd.cutoff_dt
 ),
 
--- Clients actifs APRES le cutoff → ils ne sont PAS churners
+-- Customers active AFTER the cutoff → they are NOT churners
 active_after_cutoff AS (
     SELECT DISTINCT c.customer_unique_id
     FROM orders o
     JOIN customers c ON o.customer_id = c.customer_id
     CROSS JOIN reference_dates rd
     WHERE o.order_status = 'delivered'
-      AND o.order_purchase_timestamp::DATE >= rd.cutoff_dt  -- ← APRES le cutoff
+      AND o.order_purchase_timestamp::DATE >= rd.cutoff_dt  -- ← After the cutoff
 ),
 
--- Label : churner = existait avant le cutoff ET absent après
+-- Label: churner = existed before cutoff AND absent after
 customer_churn_labels AS (
     SELECT
         r.customer_unique_id,
