@@ -37,11 +37,16 @@ DATABASE_URL = (
     f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-# ── Churn threshold ────────────────────────────────────────────────────────────
-# 180 days chosen based on dataset distribution analysis:
-# - median recency = 218 days
-# - 90-day threshold  → 80.1% churn rate (too imbalanced for ML)
-# - 180-day threshold → 58.9% churn rate (acceptable class balance)
+# Churn threshold
+# Iterations on the Olist dataset (repeat customers only, frequency >= 2):
+#
+#   90 days  → churn rate ~58–65%  ✓ acceptable distribution, AUC 0.797
+#  180 days  → churn rate ~98.8%  ✗ no learnable signal (too imbalanced)
+#
+# Key insight: the frequency >= 2 filter changes everything.
+# On all customers (including one-time buyers), 90d yields ~80% churn rate.
+# On repeat customers only, 90d yields a usable class distribution.
+# 180 days was tested without this filter — results were not significant.
 CHURN_DAYS: int = 90
 
 
