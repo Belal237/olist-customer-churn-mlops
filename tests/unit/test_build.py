@@ -115,7 +115,7 @@ def test_engineered_features_rejects_negative(base_df):
     with pytest.raises(Exception):
         EngineeredFeatures(
             customer_unique_id="c1",
-            recency_days=-1,        # valeur négative — doit être rejetée
+            recency_days=-1,        # negative value — must be rejected
             frequency=3,
             monetary=150.0,
             monetary_log=5.01,
@@ -150,7 +150,7 @@ def test_build_features_output_shape(tmp_path):
     import numpy as np
     from src.features.build import build_features, FEATURE_COLUMNS
 
-    # Créer un rfm_features.parquet minimal en entrée
+    # Create a minimal rfm_features.parquet as input
     input_df = pd.DataFrame({
         "customer_unique_id":       ["c1", "c2", "c3"],
         "recency_days":             [10, 200, 50],
@@ -166,9 +166,9 @@ def test_build_features_output_shape(tmp_path):
 
     result = build_features(input_path=input_path, output_path=output_path)
 
-    # Les colonnes finales doivent correspondre exactement à FEATURE_COLUMNS
+    # Final columns must exactly match FEATURE_COLUMNS
     assert list(result.columns) == FEATURE_COLUMNS
-    # Le fichier de sortie doit exister sur le disque
+    # Output file must exist on disk
     assert output_path.exists()
-    # Aucune ligne ne doit être perdue
+    # No rows should be lost
     assert len(result) == 3
