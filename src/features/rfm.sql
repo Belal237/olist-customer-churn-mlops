@@ -12,7 +12,7 @@ reference_dates AS (
 
 -- Delivered orders BEFORE the cutoff → used to compute features
 delivered_before_cutoff AS (
-    SELECT
+    SELECT DISTINCT
         o.order_id,
         c.customer_unique_id,
         o.order_purchase_timestamp::DATE AS order_date,

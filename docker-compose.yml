@@ -12,5 +12,25 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./src/data:/data
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: olist_api
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=olist_db
+      - DB_USER=olist_user
+      - DB_PASSWORD=olist_pass
+      - POSTGRES_HOST=postgres
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
 volumes:
   postgres_data:
