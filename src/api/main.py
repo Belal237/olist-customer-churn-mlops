@@ -10,6 +10,7 @@ Pipeline position: features.parquet + MLflow Registry → [this file] → JSON r
 """
 
 import time
+import json
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -29,6 +30,13 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+def log_json_event(event: str, **kwargs) -> None:
+    payload = {
+        "event": event,
+        **kwargs,
+    }
+    logger.info(json.dumps(payload, default=str))
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 BASE_DIR      = Path(__file__).parent.parent.parent
@@ -195,14 +203,13 @@ def predict(request: PredictRequest) -> PredictResponse:
     churn_pred  = int(state.model.predict(X)[0])
     latency_ms  = round((time.perf_counter() - start) * 1000, 2)
 
-    logger.info(
-        "predict | customer_id=%s | churn_proba=%.4f | prediction=%d"
-        " | latency_ms=%.2f | model=%s",
-        request.customer_id,
-        churn_proba,
-        churn_pred,
-        latency_ms,
-        state.model_version,
+    log_json_event(
+        "predict",
+        customer_id=request.customer_id,
+        churn_probability=churn_proba,
+        churn_prediction=churn_pred,
+        model_version=state.model_version,
+        latency_ms=latency_ms,
     )
 
     return PredictResponse(
@@ -271,14 +278,13 @@ def batch_predict(request: BatchPredictRequest) -> BatchPredictResponse:
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
     n_found    = sum(r.found for r in results)
 
-    logger.info(
-        "batch-predict | n_requested=%d | n_found=%d | n_not_found=%d"
-        " | latency_ms=%.2f | model=%s",
-        len(request.customer_ids),
-        n_found,
-        len(request.customer_ids) - n_found,
-        latency_ms,
-        state.model_version,
+    log_json_event(
+        "batch_predict",
+        n_requested=len(request.customer_ids),
+        n_found=n_found,
+        n_not_found=len(request.customer_ids) - n_found,
+        model_version=state.model_version,
+        latency_ms=latency_ms,
     )
 
     return BatchPredictResponse(

@@ -3,6 +3,7 @@ Unit tests for src/api/main.py
 Uses FastAPI TestClient — no real model or feature store needed.
 """
 
+import json
 import pandas as pd
 import numpy as np
 import pytest
@@ -69,6 +70,43 @@ def test_predict_known_customer():
     assert data["customer_id"] == "cust_001"
     assert 0.0 <= data["churn_probability"] <= 1.0
     assert data["churn_prediction"] in (0, 1)
+
+
+def test_predict_logs_json_event(monkeypatch):
+    logs = []
+
+    def fake_info(msg, *args, **kwargs):
+        logs.append(msg)
+
+    monkeypatch.setattr("src.api.main.logger.info", fake_info)
+
+    response = client.post("/predict", json={"customer_id": "cust_001"})
+    assert response.status_code == 200
+    assert logs, "Expected a JSON log event"
+    event = json.loads(logs[-1])
+    assert event["event"] == "predict"
+    assert event["customer_id"] == "cust_001"
+    assert event["churn_probability"] == pytest.approx(0.75)
+
+
+def test_batch_predict_logs_json_event(monkeypatch):
+    logs = []
+
+    def fake_info(msg, *args, **kwargs):
+        logs.append(msg)
+
+    monkeypatch.setattr("src.api.main.logger.info", fake_info)
+
+    response = client.post(
+        "/batch-predict",
+        json={"customer_ids": ["cust_001", "cust_002"]},
+    )
+    assert response.status_code == 200
+    assert logs, "Expected a JSON log event"
+    event = json.loads(logs[-1])
+    assert event["event"] == "batch_predict"
+    assert event["n_requested"] == 2
+    assert event["n_found"] == 2
 
 
 def test_predict_unknown_customer_returns_404():
