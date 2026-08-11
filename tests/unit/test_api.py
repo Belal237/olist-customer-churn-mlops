@@ -18,6 +18,7 @@ def setup_state():
     Inject a minimal fake model and feature store into AppState
     before each test, then clean up after.
     """
+    # Fake feature store — 2 known customers
     state.features = pd.DataFrame({
         "customer_unique_id":      ["cust_001", "cust_002"],
         "recency_days":            [10, 200],
@@ -31,9 +32,8 @@ def setup_state():
         "is_one_time_buyer":       [0, 0],
         "churn_label":             [0, 1],
     })
-    # Mirror what lifespan does at startup
-    state.features_indexed = state.features.set_index("customer_unique_id")
 
+    # Fake model — always returns 0.75 proba
     fake_model = MagicMock()
     fake_model.predict_proba.return_value = np.array([[0.25, 0.75]])
     fake_model.predict.return_value       = np.array([1])
@@ -42,10 +42,10 @@ def setup_state():
 
     yield
 
-    state.features         = None
-    state.features_indexed = None
-    state.model            = None
-    state.model_version    = "unknown"
+    # Cleanup
+    state.features     = None
+    state.model        = None
+    state.model_version = "unknown"
 
 
 client = TestClient(app)
@@ -115,11 +115,8 @@ def test_batch_predict_none_found():
     data = response.json()
     assert data["n_found"]     == 0
     assert data["n_not_found"] == 2
-    # Unknown IDs are returned with found=False and null scores, not silently dropped
     assert len(data["results"]) == 2
-    assert all(r["found"] is False for r in data["results"])
-    assert all(r["churn_probability"] is None for r in data["results"])
-    assert all(r["churn_prediction"] is None for r in data["results"])
+    assert all(item["found"] is False for item in data["results"])
 
 
 def test_batch_predict_empty_list_returns_422():

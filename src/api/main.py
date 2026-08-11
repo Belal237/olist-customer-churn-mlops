@@ -237,6 +237,15 @@ def batch_predict(request: BatchPredictRequest) -> BatchPredictResponse:
 
     results: list[BatchPredictItem] = []
     indexed = state.features_indexed
+    if indexed is None and state.features is not None:
+        indexed = state.features.set_index("customer_unique_id")
+        state.features_indexed = indexed
+
+    if indexed is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Feature store not loaded. Check startup logs.",
+        )
 
     for cid in request.customer_ids:
         if cid not in indexed.index:
