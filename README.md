@@ -47,10 +47,10 @@ requirements.txt
 ## Quickstart
 
 ```bash
-# 1. Start PostgreSQL
+# 1. Start PostgreSQL and the API
 docker compose up -d
 
-# 2. Install dependencies
+# 2. Install dependencies (if you need to run Python commands locally)
 pip install -r requirements.txt
 
 # 3. Load dataset into PostgreSQL
@@ -69,8 +69,7 @@ python src/models/train.py
 mlflow ui --backend-store-uri sqlite:///mlflow.db
 # open http://localhost:5000
 
-# 8. Start the API
-uvicorn src.api.main:app --reload
+# 8. API docs
 # open http://localhost:8000/docs
 
 # 9. Run tests
@@ -156,9 +155,9 @@ buyers produces a trivially imbalanced problem (98.8% churn rate, AUC=0.58)
 with no learnable signal. The model is restricted to customers with at least
 2 orders (~2,226 customers).
 
-### Why churn_days = 90 ?
-- 180 days → 98.8% churn rate on repeat customers (no learnable signal)
-- 90 days → better class distribution, AUC=0.797 on repeat customers
+### Why churn_days = 180 ?
+- 180 days matches the requested 6-month churn definition.
+- This project still keeps the repeat-customer filter (`frequency >= 2`) so churn is only computed for meaningful customers.
 
 ### Cutoff date approach
 Features and labels are computed on separate time windows to prevent data leakage:
