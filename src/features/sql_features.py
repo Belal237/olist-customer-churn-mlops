@@ -38,16 +38,14 @@ DATABASE_URL = (
 )
 
 # Churn threshold
-# Iterations on the Olist dataset (repeat customers only, frequency >= 2):
-#
-#   90 days  → churn rate ~58–65%  ✓ acceptable distribution, AUC 0.797
-#  180 days  → churn rate ~98.8%  ✗ no learnable signal (too imbalanced)
-#
-# Key insight: the frequency >= 2 filter changes everything.
-# On all customers (including one-time buyers), 90d yields ~80% churn rate.
-# On repeat customers only, 90d yields a usable class distribution.
-# 180 days was tested without this filter — results were not significant.
-CHURN_DAYS: int = 90
+# The base instruction is to define churn as no purchase in the last 6 months.
+# Set via environment variable so the threshold remains configurable for experiments.
+CHURN_DAYS: int = int(os.getenv("CHURN_DAYS", 180))
+
+# Notes on dataset behavior:
+# - 180 days reflects the requested 6-month churn definition.
+# - The repeat-customer filter (frequency >= 2) is still applied later in SQL.
+# - The feature pipeline remains stable even if the churn threshold changes.
 
 
 def get_engine():

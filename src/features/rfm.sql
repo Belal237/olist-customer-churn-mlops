@@ -19,6 +19,7 @@ delivered_before_cutoff AS (
         op.payment_value
     FROM orders o
     JOIN customers c ON o.customer_id = c.customer_id
+    JOIN order_items oi ON o.order_id = oi.order_id
     JOIN order_payments op ON o.order_id = op.order_id
     CROSS JOIN reference_dates rd
     WHERE o.order_status = 'delivered'
