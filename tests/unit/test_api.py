@@ -13,14 +13,9 @@ from fastapi.testclient import TestClient
 from src.api.main import app, state, FEATURE_COLUMNS
 
 
-@pytest.fixture(autouse=True)
-def setup_state():
-    """
-    Inject a minimal fake model and feature store into AppState
-    before each test, then clean up after.
-    """
-    # Fake feature store — 2 known customers
-    state.features = pd.DataFrame({
+@pytest.fixture
+def fake_feature_store():
+    return pd.DataFrame({
         "customer_unique_id":      ["cust_001", "cust_002"],
         "recency_days":            [10, 200],
         "frequency":               [3, 5],
@@ -34,27 +29,33 @@ def setup_state():
         "churn_label":             [0, 1],
     })
 
-    # Fake model — always returns 0.75 proba
-    fake_model = MagicMock()
-    fake_model.predict_proba.return_value = np.array([[0.25, 0.75]])
-    fake_model.predict.return_value       = np.array([1])
-    state.model         = fake_model
-    state.model_version = "models:/churn-prediction/latest"
 
-    yield
-
-    # Cleanup
-    state.features     = None
-    state.model        = None
-    state.model_version = "unknown"
+@pytest.fixture
+def fake_model():
+    model = MagicMock()
+    model.predict_proba.return_value = np.array([[0.25, 0.75]])
+    model.predict.return_value = np.array([1])
+    return model
 
 
-client = TestClient(app)
+@pytest.fixture
+def client(monkeypatch, tmp_path, fake_feature_store, fake_model):
+    features_path = tmp_path / "features.parquet"
+    fake_feature_store.to_parquet(features_path, index=False)
+
+    monkeypatch.setattr("src.api.main.FEATURES_PATH", features_path)
+    monkeypatch.setattr(
+        "src.api.main.mlflow.sklearn.load_model",
+        MagicMock(return_value=fake_model),
+    )
+
+    with TestClient(app) as client:
+        yield client
 
 
 # ── /health ────────────────────────────────────────────────────────────────────
 
-def test_health_returns_ok():
+def test_health_returns_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -63,7 +64,7 @@ def test_health_returns_ok():
 
 # ── /predict ───────────────────────────────────────────────────────────────────
 
-def test_predict_known_customer():
+def test_predict_known_customer(client):
     response = client.post("/predict", json={"customer_id": "cust_001"})
     assert response.status_code == 200
     data = response.json()
@@ -72,7 +73,7 @@ def test_predict_known_customer():
     assert data["churn_prediction"] in (0, 1)
 
 
-def test_predict_logs_json_event(monkeypatch):
+def test_predict_logs_json_event(client, monkeypatch):
     logs = []
 
     def fake_info(msg, *args, **kwargs):
@@ -89,7 +90,7 @@ def test_predict_logs_json_event(monkeypatch):
     assert event["churn_probability"] == pytest.approx(0.75)
 
 
-def test_batch_predict_logs_json_event(monkeypatch):
+def test_batch_predict_logs_json_event(client, monkeypatch):
     logs = []
 
     def fake_info(msg, *args, **kwargs):
@@ -109,19 +110,19 @@ def test_batch_predict_logs_json_event(monkeypatch):
     assert event["n_found"] == 2
 
 
-def test_predict_unknown_customer_returns_404():
+def test_predict_unknown_customer_returns_404(client):
     response = client.post("/predict", json={"customer_id": "does_not_exist"})
     assert response.status_code == 404
 
 
-def test_predict_empty_customer_id_returns_422():
+def test_predict_empty_customer_id_returns_422(client):
     response = client.post("/predict", json={"customer_id": ""})
     assert response.status_code == 422
 
 
 # ── /batch-predict ─────────────────────────────────────────────────────────────
 
-def test_batch_predict_all_found():
+def test_batch_predict_all_found(client):
     response = client.post(
         "/batch-predict",
         json={"customer_ids": ["cust_001", "cust_002"]},
@@ -133,7 +134,7 @@ def test_batch_predict_all_found():
     assert len(data["results"]) == 2
 
 
-def test_batch_predict_partial_not_found():
+def test_batch_predict_partial_not_found(client):
     response = client.post(
         "/batch-predict",
         json={"customer_ids": ["cust_001", "unknown_id"]},
@@ -144,7 +145,7 @@ def test_batch_predict_partial_not_found():
     assert data["n_not_found"] == 1
 
 
-def test_batch_predict_none_found():
+def test_batch_predict_none_found(client):
     response = client.post(
         "/batch-predict",
         json={"customer_ids": ["ghost_1", "ghost_2"]},
@@ -157,12 +158,12 @@ def test_batch_predict_none_found():
     assert all(item["found"] is False for item in data["results"])
 
 
-def test_batch_predict_empty_list_returns_422():
+def test_batch_predict_empty_list_returns_422(client):
     response = client.post("/batch-predict", json={"customer_ids": []})
     assert response.status_code == 422
 
 
-def test_batch_predict_model_not_loaded_returns_503():
+def test_batch_predict_model_not_loaded_returns_503(client):
     state.model = None
     response = client.post(
         "/batch-predict",
