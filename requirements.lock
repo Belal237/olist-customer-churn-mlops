@@ -1,0 +1,21 @@
+# LOCKED requirements (generated from requirements.txt placeholder)
+# Run `pip freeze > requirements.lock` locally after installing to produce exact versions.
+pandas==2.3.3
+numpy==2.4.4
+SQLAlchemy==2.0.49
+psycopg2-binary==2.9.12
+pyarrow==23.0.1
+
+scikit-learn==1.8.0
+xgboost==3.2.0
+mlflow==3.11.1
+
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+pydantic==2.13.3
+
+pytest==9.0.3
+pytest-cov==7.1.0
+httpx2==2.10.0
+
+python-dotenv==1.2.2
