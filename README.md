@@ -127,6 +127,8 @@ pytest -v --cov=src/features --cov-report=term-missing
 | `src/features/build.py` | 92% |
 | `src/features/sql_features.py` | — (requires PostgreSQL) |
 
+Coverage is measured on `src/features/build.py` only; the SQL feature layer requires PostgreSQL and is not covered by unit tests.
+
 ### Test structure
 
 ```
