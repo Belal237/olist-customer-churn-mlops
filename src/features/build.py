@@ -15,9 +15,8 @@ import pandas as pd
 from pydantic import BaseModel, Field, model_validator
 
 from src import config
+from src.logging_config import setup_logging
 
-# ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -237,6 +236,7 @@ def build_features(
 
 
 if __name__ == "__main__":
+    setup_logging()
     df = build_features()
 
     print("\n--- Sample (first 10 rows) ---")

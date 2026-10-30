@@ -13,9 +13,8 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 
 from src import config
+from src.logging_config import setup_logging
 
-# ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -155,6 +154,7 @@ def build_rfm_dataset(
 
 
 if __name__ == "__main__":
+    setup_logging()
     df = build_rfm_dataset()
 
     print("\n--- Sample (first 10 rows) ---")

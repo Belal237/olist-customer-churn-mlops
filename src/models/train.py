@@ -36,8 +36,8 @@ from xgboost import XGBClassifier
 
 from src import config
 from src.features.build import ID_COLUMN, MODEL_FEATURES, TARGET_COLUMN
+from src.logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ SEED = 42
 TEST_SIZE = 0.25
 CV_FOLDS = 5
 CV_REPEATS = 5
-DECISION_THRESHOLD = 0.5
+DECISION_THRESHOLD = config.CHURN_DECISION_THRESHOLD
 
 # Shallow, regularized trees: ~1.6k rows and only ~70 retained customers.
 # No scale_pos_weight: re-weighting barely moved ROC-AUC but destroyed
@@ -206,4 +206,5 @@ def train(
 
 
 if __name__ == "__main__":
+    setup_logging()
     train()

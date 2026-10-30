@@ -40,6 +40,10 @@ DATABASE_URL = (
 # "Data & Modeling Decisions", for why 180 days is the default.
 CHURN_DAYS = int(os.getenv("CHURN_DAYS", "180"))
 
+# Probability above which churn_prediction = 1. The probability is the primary
+# output: with a ~96% base rate a calibrated model scores most customers above 0.5.
+CHURN_DECISION_THRESHOLD = float(os.getenv("CHURN_DECISION_THRESHOLD", "0.5"))
+
 # ── MLflow ─────────────────────────────────────────────────────────────────────
 MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{BASE_DIR / 'mlflow.db'}")
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "churn-prediction")
