@@ -4,30 +4,33 @@ Uses FastAPI TestClient — no real model or feature store needed.
 """
 
 import json
-import pandas as pd
+from unittest.mock import MagicMock
+
 import numpy as np
+import pandas as pd
 import pytest
-from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-from src.api.main import app, state, FEATURE_COLUMNS
+from src.api.main import app, state
 
 
 @pytest.fixture
 def fake_feature_store():
-    return pd.DataFrame({
-        "customer_unique_id":      ["cust_001", "cust_002"],
-        "recency_days":            [10, 200],
-        "frequency":               [3, 5],
-        "monetary":                [150.0, 400.0],
-        "monetary_log":            [np.log1p(150.0), np.log1p(400.0)],
-        "avg_order_value":         [50.0, 80.0],
-        "days_per_order":          [30.0, 60.0],
-        "avg_days_between_orders": [45.0, 60.0],
-        "customer_lifetime_days":  [90, 300],
-        "is_one_time_buyer":       [0, 0],
-        "churn_label":             [0, 1],
-    })
+    return pd.DataFrame(
+        {
+            "customer_unique_id": ["cust_001", "cust_002"],
+            "recency_days": [10, 200],
+            "frequency": [3, 5],
+            "monetary": [150.0, 400.0],
+            "monetary_log": [np.log1p(150.0), np.log1p(400.0)],
+            "avg_order_value": [50.0, 80.0],
+            "days_per_order": [30.0, 60.0],
+            "avg_days_between_orders": [45.0, 60.0],
+            "customer_lifetime_days": [90, 300],
+            "is_one_time_buyer": [0, 0],
+            "churn_label": [0, 1],
+        }
+    )
 
 
 @pytest.fixture
@@ -55,6 +58,7 @@ def client(monkeypatch, tmp_path, fake_feature_store, fake_model):
 
 # ── /health ────────────────────────────────────────────────────────────────────
 
+
 def test_health_returns_ok(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -63,6 +67,7 @@ def test_health_returns_ok(client):
 
 
 # ── /predict ───────────────────────────────────────────────────────────────────
+
 
 def test_predict_known_customer(client):
     response = client.post("/predict", json={"customer_id": "cust_001"})
@@ -122,6 +127,7 @@ def test_predict_empty_customer_id_returns_422(client):
 
 # ── /batch-predict ─────────────────────────────────────────────────────────────
 
+
 def test_batch_predict_all_found(client):
     response = client.post(
         "/batch-predict",
@@ -129,7 +135,7 @@ def test_batch_predict_all_found(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["n_found"]     == 2
+    assert data["n_found"] == 2
     assert data["n_not_found"] == 0
     assert len(data["results"]) == 2
 
@@ -141,7 +147,7 @@ def test_batch_predict_partial_not_found(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["n_found"]     == 1
+    assert data["n_found"] == 1
     assert data["n_not_found"] == 1
 
 
@@ -152,7 +158,7 @@ def test_batch_predict_none_found(client):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["n_found"]     == 0
+    assert data["n_found"] == 0
     assert data["n_not_found"] == 2
     assert len(data["results"]) == 2
     assert all(item["found"] is False for item in data["results"])

@@ -1,6 +1,7 @@
-import psycopg2
 import os
 from pathlib import Path
+
+import psycopg2
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -21,7 +22,7 @@ SCHEMAS = {
             ("customer_zip_code_prefix", "TEXT"),
             ("customer_city", "TEXT"),
             ("customer_state", "TEXT"),
-        ]
+        ],
     },
     "orders": {
         "file": "olist_orders_dataset.csv",
@@ -34,7 +35,7 @@ SCHEMAS = {
             ("order_delivered_carrier_date", "TIMESTAMP"),
             ("order_delivered_customer_date", "TIMESTAMP"),
             ("order_estimated_delivery_date", "TIMESTAMP"),
-        ]
+        ],
     },
     "order_items": {
         "file": "olist_order_items_dataset.csv",
@@ -46,7 +47,7 @@ SCHEMAS = {
             ("shipping_limit_date", "TIMESTAMP"),
             ("price", "NUMERIC(10,2)"),
             ("freight_value", "NUMERIC(10,2)"),
-        ]
+        ],
     },
     "order_payments": {
         "file": "olist_order_payments_dataset.csv",
@@ -56,7 +57,7 @@ SCHEMAS = {
             ("payment_type", "TEXT"),
             ("payment_installments", "INTEGER"),
             ("payment_value", "NUMERIC(10,2)"),
-        ]
+        ],
     },
     "order_reviews": {
         "file": "olist_order_reviews_dataset.csv",
@@ -68,7 +69,7 @@ SCHEMAS = {
             ("review_comment_message", "TEXT"),
             ("review_creation_date", "TIMESTAMP"),
             ("review_answer_timestamp", "TIMESTAMP"),
-        ]
+        ],
     },
     "products": {
         "file": "olist_products_dataset.csv",
@@ -82,7 +83,7 @@ SCHEMAS = {
             ("product_length_cm", "INTEGER"),
             ("product_height_cm", "INTEGER"),
             ("product_width_cm", "INTEGER"),
-        ]
+        ],
     },
     "sellers": {
         "file": "olist_sellers_dataset.csv",
@@ -91,7 +92,7 @@ SCHEMAS = {
             ("seller_zip_code_prefix", "TEXT"),
             ("seller_city", "TEXT"),
             ("seller_state", "TEXT"),
-        ]
+        ],
     },
     "geolocation": {
         "file": "olist_geolocation_dataset.csv",
@@ -101,14 +102,14 @@ SCHEMAS = {
             ("geolocation_lng", "NUMERIC(10,6)"),
             ("geolocation_city", "TEXT"),
             ("geolocation_state", "TEXT"),
-        ]
+        ],
     },
     "product_category": {
         "file": "product_category_name_translation.csv",
         "columns": [
             ("product_category_name", "TEXT PRIMARY KEY"),
             ("product_category_name_english", "TEXT"),
-        ]
+        ],
     },
 }
 
@@ -120,7 +121,7 @@ def load_table(conn, table_name: str, schema: dict) -> None:
     with conn.cursor() as cur:
         cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
         cur.execute(f"CREATE TABLE {table_name} ({col_defs})")
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, encoding="utf-8") as f:
             next(f)  # skip header
             cur.copy_expert(f"COPY {table_name} FROM STDIN WITH CSV NULL ''", f)
         conn.commit()

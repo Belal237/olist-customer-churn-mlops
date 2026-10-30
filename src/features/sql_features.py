@@ -6,36 +6,30 @@ the olist_db database, then saves the result as a parquet file.
 Pipeline position: RAW DATA → [this file] → rfm_features.parquet → build.py
 """
 
-import os
 import logging
+import os
 from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import create_engine, text
 
 # ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR       = Path(__file__).parent.parent.parent
-SQL_PATH       = BASE_DIR / "src" / "features" / "rfm.sql"
+BASE_DIR = Path(__file__).parent.parent.parent
+SQL_PATH = BASE_DIR / "src" / "features" / "rfm.sql"
 DEFAULT_OUTPUT = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
 
 # ── Database configuration ─────────────────────────────────────────────────────
-DB_USER     = os.getenv("POSTGRES_USER",     "olist_user")
+DB_USER = os.getenv("POSTGRES_USER", "olist_user")
 DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "olist_pass")
-DB_HOST     = os.getenv("POSTGRES_HOST",     "localhost")
-DB_PORT     = os.getenv("POSTGRES_PORT",     "5432")
-DB_NAME     = os.getenv("POSTGRES_DB",       "olist_db")
+DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
+DB_PORT = os.getenv("POSTGRES_PORT", "5432")
+DB_NAME = os.getenv("POSTGRES_DB", "olist_db")
 
-DATABASE_URL = (
-    f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}"
-    f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-)
+DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Churn threshold
 # The base instruction is to define churn as no purchase in the last 6 months.
@@ -111,8 +105,8 @@ def validate_rfm(df: pd.DataFrame) -> None:
     )
 
     # Value range sanity checks
-    assert (df["frequency"]    >= 1).all(), "frequency must be >= 1"
-    assert (df["monetary"]     >= 0).all(), "monetary must be >= 0"
+    assert (df["frequency"] >= 1).all(), "frequency must be >= 1"
+    assert (df["monetary"] >= 0).all(), "monetary must be >= 0"
     assert (df["recency_days"] >= 0).all(), "recency_days must be >= 0"
 
     churn_rate = df["churn_label"].mean()
@@ -140,7 +134,7 @@ def build_rfm_dataset(output_path: Path = DEFAULT_OUTPUT) -> pd.DataFrame:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     engine = get_engine()
-    df     = compute_rfm(engine)
+    df = compute_rfm(engine)
     validate_rfm(df)
 
     df.to_parquet(output_path, index=False)

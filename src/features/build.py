@@ -15,15 +15,12 @@ import pandas as pd
 from pydantic import BaseModel, Field, model_validator
 
 # ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR       = Path(__file__).parent.parent.parent
-DEFAULT_INPUT  = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
+BASE_DIR = Path(__file__).parent.parent.parent
+DEFAULT_INPUT = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
 DEFAULT_OUTPUT = BASE_DIR / "data" / "processed" / "features.parquet"
 
 # ── Final column order (fed into the model) ────────────────────────────────────
@@ -44,39 +41,45 @@ FEATURE_COLUMNS = [
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
 
+
 class RawCustomerFeatures(BaseModel):
     """Schema for one row coming out of sql_features.py (rfm_features.parquet)."""
-    customer_unique_id:       str
-    recency_days:             int   = Field(ge=0)
-    frequency:                int   = Field(ge=1)
-    monetary:                 float = Field(ge=0.0)
-    customer_lifetime_days:   int   = Field(ge=0)
-    avg_days_between_orders:  float = Field(ge=0.0)
-    churn_label:              int   = Field(ge=0, le=1)
+
+    customer_unique_id: str
+    recency_days: int = Field(ge=0)
+    frequency: int = Field(ge=1)
+    monetary: float = Field(ge=0.0)
+    customer_lifetime_days: int = Field(ge=0)
+    avg_days_between_orders: float = Field(ge=0.0)
+    churn_label: int = Field(ge=0, le=1)
 
     model_config = {"strict": True}
 
 
 class EngineeredFeatures(BaseModel):
     """Schema for one row after feature engineering — input to the model."""
-    customer_unique_id:      str
-    recency_days:            int
-    frequency:               int
-    monetary:                float
-    monetary_log:            float  # log1p(monetary) — reduces right skew
-    avg_order_value:         float  # monetary / frequency
-    days_per_order:          float  # customer_lifetime_days / frequency
+
+    customer_unique_id: str
+    recency_days: int
+    frequency: int
+    monetary: float
+    monetary_log: float  # log1p(monetary) — reduces right skew
+    avg_order_value: float  # monetary / frequency
+    days_per_order: float  # customer_lifetime_days / frequency
     avg_days_between_orders: float
-    customer_lifetime_days:  int
-    is_one_time_buyer:       int    # 1 if frequency == 1
-    churn_label:             int
+    customer_lifetime_days: int
+    is_one_time_buyer: int  # 1 if frequency == 1
+    churn_label: int
 
     @model_validator(mode="after")
     def check_no_negatives(self) -> "EngineeredFeatures":
         """All numeric features must be non-negative after engineering."""
         for field in [
-            "recency_days", "frequency", "monetary",
-            "avg_order_value", "days_per_order",
+            "recency_days",
+            "frequency",
+            "monetary",
+            "avg_order_value",
+            "days_per_order",
         ]:
             if getattr(self, field) < 0:
                 raise ValueError(f"Feature '{field}' must be >= 0")
@@ -85,6 +88,7 @@ class EngineeredFeatures(BaseModel):
 
 # ── Pure transformation functions ──────────────────────────────────────────────
 # Each function is pure: takes a DataFrame, returns a new one, never mutates.
+
 
 def add_monetary_log(df: pd.DataFrame) -> pd.DataFrame:
     """log1p transform on monetary to reduce right skew."""
@@ -138,8 +142,11 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     df["avg_days_between_orders"] = df["avg_days_between_orders"].fillna(0.0)
 
     critical_cols = [
-        "recency_days", "frequency", "monetary",
-        "customer_lifetime_days", "churn_label",
+        "recency_days",
+        "frequency",
+        "monetary",
+        "customer_lifetime_days",
+        "churn_label",
     ]
     for col in critical_cols:
         n_nulls = df[col].isna().sum()
@@ -152,6 +159,7 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── Schema validation on a sample ─────────────────────────────────────────────
+
 
 def validate_schema(df: pd.DataFrame, sample_size: int = 500) -> None:
     """
@@ -167,8 +175,9 @@ def validate_schema(df: pd.DataFrame, sample_size: int = 500) -> None:
 
 # ── Full pipeline ──────────────────────────────────────────────────────────────
 
+
 def build_features(
-    input_path:  Path = DEFAULT_INPUT,
+    input_path: Path = DEFAULT_INPUT,
     output_path: Path = DEFAULT_OUTPUT,
 ) -> pd.DataFrame:
     """

@@ -6,33 +6,41 @@ Each test is independent and uses only in-memory DataFrames — no DB, no disk.
 import numpy as np
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from src.features.build import (
+    FEATURE_COLUMNS,
+    EngineeredFeatures,
     add_avg_order_value,
     add_days_per_order,
     add_monetary_log,
     add_one_time_buyer_flag,
+    build_features,
     handle_missing_values,
+    validate_schema,
 )
 
-
 # ── Fixtures ───────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def base_df():
     """Minimal valid DataFrame that mirrors rfm_features.parquet schema."""
-    return pd.DataFrame({
-        "customer_unique_id":       ["c1", "c2", "c3"],
-        "recency_days":             [10, 200, 50],
-        "frequency":                [3, 1, 5],
-        "monetary":                 [150.0, 0.0, 400.0],
-        "customer_lifetime_days":   [90, 0, 300],
-        "avg_days_between_orders":  [45.0, None, 60.0],
-        "churn_label":              [0, 1, 0],
-    })
+    return pd.DataFrame(
+        {
+            "customer_unique_id": ["c1", "c2", "c3"],
+            "recency_days": [10, 200, 50],
+            "frequency": [3, 1, 5],
+            "monetary": [150.0, 0.0, 400.0],
+            "customer_lifetime_days": [90, 0, 300],
+            "avg_days_between_orders": [45.0, None, 60.0],
+            "churn_label": [0, 1, 0],
+        }
+    )
 
 
 # ── Test: monetary_log ─────────────────────────────────────────────────────────
+
 
 def test_add_monetary_log_values(base_df):
     """log1p(0) = 0, log1p(150) > 0 — verifies the transform is applied correctly."""
@@ -51,6 +59,7 @@ def test_add_monetary_log_no_mutation(base_df):
 
 # ── Test: avg_order_value ──────────────────────────────────────────────────────
 
+
 def test_add_avg_order_value_correct(base_df):
     """monetary / frequency must match for all rows."""
     result = add_avg_order_value(base_df)
@@ -63,6 +72,7 @@ def test_add_avg_order_value_correct(base_df):
 
 
 # ── Test: days_per_order ───────────────────────────────────────────────────────
+
 
 def test_days_per_order_one_time_buyer(base_df):
     """One-time buyers (frequency=1) must get days_per_order=0, not a division error."""
@@ -85,6 +95,7 @@ def test_days_per_order_multi_buyer(base_df):
 
 # ── Test: one_time_buyer flag ──────────────────────────────────────────────────
 
+
 def test_one_time_buyer_flag(base_df):
     """is_one_time_buyer must be 1 only where frequency == 1."""
     result = add_one_time_buyer_flag(base_df)
@@ -93,6 +104,7 @@ def test_one_time_buyer_flag(base_df):
 
 
 # ── Test: handle_missing_values ────────────────────────────────────────────────
+
 
 def test_handle_missing_fills_avg_days(base_df):
     """avg_days_between_orders NaN (one-time buyer) must be filled with 0."""
@@ -110,12 +122,11 @@ def test_handle_missing_raises_on_critical_null(base_df):
 
 
 def test_engineered_features_rejects_negative(base_df):
-    """Le model_validator doit rejeter une valeur négative dans les features."""
-    from src.features.build import EngineeredFeatures
-    with pytest.raises(Exception):
+    """The model_validator must reject a negative feature value."""
+    with pytest.raises(ValidationError, match="recency_days"):
         EngineeredFeatures(
             customer_unique_id="c1",
-            recency_days=-1,        # negative value — must be rejected
+            recency_days=-1,  # negative value — must be rejected
             frequency=3,
             monetary=150.0,
             monetary_log=5.01,
@@ -129,37 +140,37 @@ def test_engineered_features_rejects_negative(base_df):
 
 
 def test_validate_schema_passes_on_valid_df(base_df):
-    """validate_schema ne doit pas lever d'erreur sur un DataFrame valide et complet."""
-    from src.features.build import validate_schema
-    import numpy as np
+    """validate_schema must not raise on a complete, valid DataFrame."""
 
     df = base_df.copy()
     df = df.assign(
         monetary_log=np.log1p(df["monetary"]),
         avg_order_value=df["monetary"] / df["frequency"],
-        days_per_order=np.where(df["frequency"] > 1, df["customer_lifetime_days"] / df["frequency"], 0.0),
+        days_per_order=np.where(
+            df["frequency"] > 1, df["customer_lifetime_days"] / df["frequency"], 0.0
+        ),
         is_one_time_buyer=(df["frequency"] == 1).astype(int),
         avg_days_between_orders=df["avg_days_between_orders"].fillna(0.0),
     )
-    # Ne doit pas lever d'exception
+    # Must not raise
     validate_schema(df, sample_size=3)
 
 
 def test_build_features_output_shape(tmp_path):
-    """build_features doit lire un parquet, transformer, et sauvegarder le résultat."""
-    import numpy as np
-    from src.features.build import build_features, FEATURE_COLUMNS
+    """build_features must read a parquet file, transform it and save the result."""
 
     # Create a minimal rfm_features.parquet as input
-    input_df = pd.DataFrame({
-        "customer_unique_id":       ["c1", "c2", "c3"],
-        "recency_days":             [10, 200, 50],
-        "frequency":                [3, 1, 5],
-        "monetary":                 [150.0, 0.0, 400.0],
-        "customer_lifetime_days":   [90, 0, 300],
-        "avg_days_between_orders":  [45.0, 0.0, 60.0],
-        "churn_label":              [0, 1, 0],
-    })
+    input_df = pd.DataFrame(
+        {
+            "customer_unique_id": ["c1", "c2", "c3"],
+            "recency_days": [10, 200, 50],
+            "frequency": [3, 1, 5],
+            "monetary": [150.0, 0.0, 400.0],
+            "customer_lifetime_days": [90, 0, 300],
+            "avg_days_between_orders": [45.0, 0.0, 60.0],
+            "churn_label": [0, 1, 0],
+        }
+    )
     input_path = tmp_path / "rfm_features.parquet"
     output_path = tmp_path / "features.parquet"
     input_df.to_parquet(input_path, index=False)

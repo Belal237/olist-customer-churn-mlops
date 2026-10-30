@@ -9,27 +9,24 @@ Endpoints:
 Pipeline position: features.parquet + MLflow Registry → [this file] → JSON response
 """
 
-import time
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
-import pandas as pd
 import mlflow
 import mlflow.sklearn
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 mlflow.set_tracking_uri("sqlite:///mlflow.db")
 
 # ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
 
 def log_json_event(event: str, **kwargs) -> None:
     payload = {
@@ -38,8 +35,9 @@ def log_json_event(event: str, **kwargs) -> None:
     }
     logger.info(json.dumps(payload, default=str))
 
+
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR      = Path(__file__).parent.parent.parent
+BASE_DIR = Path(__file__).parent.parent.parent
 FEATURES_PATH = BASE_DIR / "data" / "processed" / "features.parquet"
 
 # ── Model URI ──────────────────────────────────────────────────────────────────
@@ -61,10 +59,10 @@ FEATURE_COLUMNS = [
 
 # ── Application state ──────────────────────────────────────────────────────────
 class AppState:
-    model                        = None
-    features: pd.DataFrame       = None
+    model = None
+    features: pd.DataFrame = None
     features_indexed: pd.DataFrame = None  # indexed once at startup for O(1) lookup
-    model_version: str           = "unknown"
+    model_version: str = "unknown"
 
 
 state = AppState()
@@ -77,24 +75,24 @@ async def lifespan(app: FastAPI):
     logger.info("Loading feature store from: %s", FEATURES_PATH)
     if not FEATURES_PATH.exists():
         raise RuntimeError(f"Feature store not found: {FEATURES_PATH}")
-    state.features         = pd.read_parquet(FEATURES_PATH)
+    state.features = pd.read_parquet(FEATURES_PATH)
     state.features_indexed = state.features.set_index("customer_unique_id")
     logger.info("Feature store loaded: %s customers", f"{len(state.features):,}")
 
     logger.info("Loading model from MLflow Registry: %s", MODEL_URI)
     try:
-        state.model         = mlflow.sklearn.load_model(MODEL_URI)
+        state.model = mlflow.sklearn.load_model(MODEL_URI)
         state.model_version = MODEL_URI
         logger.info("Model loaded successfully.")
     except Exception as e:
-        raise RuntimeError(f"Failed to load model from MLflow Registry: {e}")
+        raise RuntimeError(f"Failed to load model from MLflow Registry: {e}") from e
 
     yield  # app is running
 
     # Shutdown
     logger.info("Shutting down — releasing resources.")
-    state.model            = None
-    state.features         = None
+    state.model = None
+    state.features = None
     state.features_indexed = None
 
 
@@ -109,6 +107,7 @@ app = FastAPI(
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
 
+
 class PredictRequest(BaseModel):
     customer_id: str = Field(
         ...,
@@ -118,16 +117,16 @@ class PredictRequest(BaseModel):
 
 
 class PredictResponse(BaseModel):
-    customer_id:       str
+    customer_id: str
     churn_probability: float = Field(ge=0.0, le=1.0)
-    churn_prediction:  int   = Field(ge=0, le=1)
-    model_version:     str
-    latency_ms:        float
+    churn_prediction: int = Field(ge=0, le=1)
+    model_version: str
+    latency_ms: float
 
 
 class HealthResponse(BaseModel):
-    status:               str
-    model_version:        str
+    status: str
+    model_version: str
     n_customers_in_store: int
 
 
@@ -141,22 +140,23 @@ class BatchPredictRequest(BaseModel):
 
 
 class BatchPredictItem(BaseModel):
-    customer_id:       str
-    churn_probability: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    churn_prediction:  Optional[int]   = Field(default=None, ge=0, le=1)
-    found:             bool
+    customer_id: str
+    churn_probability: float | None = Field(default=None, ge=0.0, le=1.0)
+    churn_prediction: int | None = Field(default=None, ge=0, le=1)
+    found: bool
 
 
 class BatchPredictResponse(BaseModel):
-    results:       list[BatchPredictItem]
-    n_requested:   int
-    n_found:       int
-    n_not_found:   int
+    results: list[BatchPredictItem]
+    n_requested: int
+    n_found: int
+    n_not_found: int
     model_version: str
-    latency_ms:    float
+    latency_ms: float
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -188,9 +188,7 @@ def predict(request: PredictRequest) -> PredictResponse:
             detail="Model not loaded. Check startup logs.",
         )
 
-    customer_row = state.features[
-        state.features["customer_unique_id"] == request.customer_id
-    ]
+    customer_row = state.features[state.features["customer_unique_id"] == request.customer_id]
 
     if customer_row.empty:
         raise HTTPException(
@@ -198,10 +196,10 @@ def predict(request: PredictRequest) -> PredictResponse:
             detail=f"Customer '{request.customer_id}' not found in feature store.",
         )
 
-    X           = customer_row[FEATURE_COLUMNS].values
+    X = customer_row[FEATURE_COLUMNS].values
     churn_proba = float(state.model.predict_proba(X)[0][1])
-    churn_pred  = int(state.model.predict(X)[0])
-    latency_ms  = round((time.perf_counter() - start) * 1000, 2)
+    churn_pred = int(state.model.predict(X)[0])
+    latency_ms = round((time.perf_counter() - start) * 1000, 2)
 
     log_json_event(
         "predict",
@@ -256,27 +254,31 @@ def batch_predict(request: BatchPredictRequest) -> BatchPredictResponse:
 
     for cid in request.customer_ids:
         if cid not in indexed.index:
-            results.append(BatchPredictItem(
-                customer_id=cid,
-                churn_probability=None,
-                churn_prediction=None,
-                found=False,
-            ))
+            results.append(
+                BatchPredictItem(
+                    customer_id=cid,
+                    churn_probability=None,
+                    churn_prediction=None,
+                    found=False,
+                )
+            )
             continue
 
-        X           = indexed.loc[cid, FEATURE_COLUMNS].values.reshape(1, -1)
+        X = indexed.loc[cid, FEATURE_COLUMNS].values.reshape(1, -1)
         churn_proba = float(state.model.predict_proba(X)[0][1])
-        churn_pred  = int(state.model.predict(X)[0])
+        churn_pred = int(state.model.predict(X)[0])
 
-        results.append(BatchPredictItem(
-            customer_id=cid,
-            churn_probability=churn_proba,
-            churn_prediction=churn_pred,
-            found=True,
-        ))
+        results.append(
+            BatchPredictItem(
+                customer_id=cid,
+                churn_probability=churn_proba,
+                churn_prediction=churn_pred,
+                found=True,
+            )
+        )
 
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
-    n_found    = sum(r.found for r in results)
+    n_found = sum(r.found for r in results)
 
     log_json_event(
         "batch_predict",
