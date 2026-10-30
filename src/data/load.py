@@ -1,16 +1,25 @@
+"""
+Load the raw Olist CSV files into PostgreSQL.
+
+Each table is dropped and recreated, then bulk-loaded with COPY, which is an
+order of magnitude faster than row-by-row INSERTs on the 1M+ row geolocation
+table. Indexes on the join keys used by rfm.sql are created afterwards.
+
+Pipeline position: data/raw/*.csv → [this file] → PostgreSQL → sql_features.py
+
+Usage:
+    python -m src.data.load
+"""
+
+import logging
+
 import psycopg2
-import os
-from pathlib import Path
+from psycopg2 import sql
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", 5432)),
-    "database": os.getenv("DB_NAME", "olist_db"),
-    "user": os.getenv("DB_USER", "olist_user"),
-    "password": os.getenv("DB_PASSWORD", "olist_pass"),
-}
+from src import config
+from src.logging_config import setup_logging
 
-BASE_DIR = Path(__file__).parent.parent.parent
+logger = logging.getLogger(__name__)
 
 SCHEMAS = {
     "customers": {
@@ -21,7 +30,7 @@ SCHEMAS = {
             ("customer_zip_code_prefix", "TEXT"),
             ("customer_city", "TEXT"),
             ("customer_state", "TEXT"),
-        ]
+        ],
     },
     "orders": {
         "file": "olist_orders_dataset.csv",
@@ -34,7 +43,7 @@ SCHEMAS = {
             ("order_delivered_carrier_date", "TIMESTAMP"),
             ("order_delivered_customer_date", "TIMESTAMP"),
             ("order_estimated_delivery_date", "TIMESTAMP"),
-        ]
+        ],
     },
     "order_items": {
         "file": "olist_order_items_dataset.csv",
@@ -46,7 +55,7 @@ SCHEMAS = {
             ("shipping_limit_date", "TIMESTAMP"),
             ("price", "NUMERIC(10,2)"),
             ("freight_value", "NUMERIC(10,2)"),
-        ]
+        ],
     },
     "order_payments": {
         "file": "olist_order_payments_dataset.csv",
@@ -56,7 +65,7 @@ SCHEMAS = {
             ("payment_type", "TEXT"),
             ("payment_installments", "INTEGER"),
             ("payment_value", "NUMERIC(10,2)"),
-        ]
+        ],
     },
     "order_reviews": {
         "file": "olist_order_reviews_dataset.csv",
@@ -68,7 +77,7 @@ SCHEMAS = {
             ("review_comment_message", "TEXT"),
             ("review_creation_date", "TIMESTAMP"),
             ("review_answer_timestamp", "TIMESTAMP"),
-        ]
+        ],
     },
     "products": {
         "file": "olist_products_dataset.csv",
@@ -82,7 +91,7 @@ SCHEMAS = {
             ("product_length_cm", "INTEGER"),
             ("product_height_cm", "INTEGER"),
             ("product_width_cm", "INTEGER"),
-        ]
+        ],
     },
     "sellers": {
         "file": "olist_sellers_dataset.csv",
@@ -91,7 +100,7 @@ SCHEMAS = {
             ("seller_zip_code_prefix", "TEXT"),
             ("seller_city", "TEXT"),
             ("seller_state", "TEXT"),
-        ]
+        ],
     },
     "geolocation": {
         "file": "olist_geolocation_dataset.csv",
@@ -101,43 +110,88 @@ SCHEMAS = {
             ("geolocation_lng", "NUMERIC(10,6)"),
             ("geolocation_city", "TEXT"),
             ("geolocation_state", "TEXT"),
-        ]
+        ],
     },
     "product_category": {
         "file": "product_category_name_translation.csv",
         "columns": [
             ("product_category_name", "TEXT PRIMARY KEY"),
             ("product_category_name_english", "TEXT"),
-        ]
+        ],
     },
 }
 
 
-def load_table(conn, table_name: str, schema: dict) -> None:
-    csv_path = BASE_DIR / "src" / "data" / schema["file"]
-    col_defs = ", ".join(f'"{col}" {col_type}' for col, col_type in schema["columns"])
+# Join keys used by src/features/rfm.sql — created once the data is loaded
+INDEXES = {
+    "orders": ["customer_id", "order_status"],
+    "customers": ["customer_unique_id"],
+    "order_items": ["order_id"],
+    "order_payments": ["order_id"],
+    "order_reviews": ["order_id"],
+}
+
+
+def load_table(conn, table_name: str, schema: dict) -> int:
+    """Drop, recreate and bulk-load one table. Returns the loaded row count."""
+    csv_path = config.RAW_DATA_DIR / schema["file"]
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Missing raw file: {csv_path}. "
+            "Download the dataset with: kaggle datasets download olistbr/brazilian-ecommerce"
+        )
+
+    table = sql.Identifier(table_name)
+    col_defs = sql.SQL(", ").join(
+        sql.SQL("{} {}").format(sql.Identifier(col), sql.SQL(col_type))
+        for col, col_type in schema["columns"]
+    )
 
     with conn.cursor() as cur:
-        cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
-        cur.execute(f"CREATE TABLE {table_name} ({col_defs})")
-        with open(csv_path, "r", encoding="utf-8") as f:
-            next(f)  # skip header
-            cur.copy_expert(f"COPY {table_name} FROM STDIN WITH CSV NULL ''", f)
-        conn.commit()
-        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-        n = cur.fetchone()[0]
-        print(f"  {table_name}: {n} lignes")
+        cur.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(table))
+        cur.execute(sql.SQL("CREATE TABLE {} ({})").format(table, col_defs))
+        with open(csv_path, encoding="utf-8") as f:
+            cur.copy_expert(
+                sql.SQL("COPY {} FROM STDIN WITH CSV HEADER NULL ''").format(table),
+                f,
+            )
+        for column in INDEXES.get(table_name, []):
+            cur.execute(
+                sql.SQL("CREATE INDEX {} ON {} ({})").format(
+                    sql.Identifier(f"idx_{table_name}_{column}"),
+                    table,
+                    sql.Identifier(column),
+                )
+            )
+        cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(table))
+        n_rows = cur.fetchone()[0]
+    conn.commit()
+    return n_rows
 
 
-def main():
-    print("Connexion à PostgreSQL...")
-    conn = psycopg2.connect(**DB_CONFIG)
-    print("Chargement des tables :")
-    for table_name, schema in SCHEMAS.items():
-        load_table(conn, table_name, schema)
-    conn.close()
-    print("Done.")
+def main() -> None:
+    logger.info(
+        "Connecting to PostgreSQL at %s:%s/%s",
+        config.POSTGRES_HOST,
+        config.POSTGRES_PORT,
+        config.POSTGRES_DB,
+    )
+    conn = psycopg2.connect(
+        host=config.POSTGRES_HOST,
+        port=config.POSTGRES_PORT,
+        dbname=config.POSTGRES_DB,
+        user=config.POSTGRES_USER,
+        password=config.POSTGRES_PASSWORD,
+    )
+    try:
+        for table_name, schema in SCHEMAS.items():
+            n_rows = load_table(conn, table_name, schema)
+            logger.info("Loaded %-18s %9s rows", table_name, f"{n_rows:,}")
+    finally:
+        conn.close()
+    logger.info("All tables loaded.")
 
 
 if __name__ == "__main__":
+    setup_logging()
     main()

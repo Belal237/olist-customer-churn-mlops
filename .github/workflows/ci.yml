@@ -2,50 +2,114 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
 
 jobs:
-  test:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff
+        run: python -m pip install "ruff==0.17.3"
+
+      - name: Ruff lint
+        run: ruff check --output-format=github src tests
+
+      - name: Ruff format
+        run: ruff format --check src tests
+
+  test:
+    name: Tests (unit + integration)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: olist_user
+          POSTGRES_PASSWORD: olist_pass
+          POSTGRES_DB: olist_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir -r requirements.txt
+        run: python -m pip install -r requirements-dev.txt
 
-      - name: "CI setup: create data dirs"
-        run: |
-          bash scripts/ci_setup.sh
+      # Integration tests fail (instead of skipping) when PostgreSQL is
+      # unreachable, because GitHub Actions sets CI=true.
+      - name: Run tests with coverage
+        run: >
+          python -m pytest
+          --cov --cov-report=term-missing --cov-report=xml
+          --cov-fail-under=70
 
-      - name: Lint with flake8 (optional)
-        run: |
-          python -m pip install --no-cache-dir flake8
-          flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
-        continue-on-error: true
-
-      - name: Run unit tests
-        run: |
-          python -m pytest -v tests/unit/test_build.py tests/unit/test_api.py
-
-      - name: Generate coverage report
-        run: |
-          python -m pytest -v --cov=src/features --cov=src/api --cov-report=term-missing --cov-report=xml
-
-      - name: Upload coverage to Codecov (optional)
-        uses: codecov/codecov-action@v3
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
-      - name: Build Docker image
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: olist-churn-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test — application imports with serving dependencies only
+        run: docker run --rm olist-churn-api:ci python -c "import src.api.main"
+
+      - name: Report image size
         run: |
-          docker build --file Dockerfile --tag olist-churn-api:latest .
+          size=$(docker image inspect olist-churn-api:ci --format '{{.Size}}')
+          compressed=$(docker save olist-churn-api:ci | gzip -c | wc -c)
+          {
+            echo "### API image"
+            echo "| Uncompressed | Compressed (gzip) |"
+            echo "|---|---|"
+            echo "| $((size / 1024 / 1024)) MB | $((compressed / 1024 / 1024)) MB |"
+          } >> "$GITHUB_STEP_SUMMARY"

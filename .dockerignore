@@ -1,0 +1,6 @@
+# Only src/ and the API requirements are needed in the image
+*
+!requirements-api.txt
+!src/
+src/**/__pycache__
+src/**/README.md

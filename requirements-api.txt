@@ -1,0 +1,17 @@
+# Serving-only dependencies, installed in the Docker image.
+# Lighter than requirements.txt: no PostgreSQL driver, no MLflow server
+# (mlflow-skinny is enough to download models), CPU-only XGBoost build.
+# Versions must stay aligned with requirements.txt.
+
+fastapi==0.136.1
+uvicorn[standard]==0.46.0
+pydantic==2.13.3
+python-dotenv==1.2.2
+
+pandas==2.3.3
+numpy==2.4.4
+pyarrow==23.0.1
+
+scikit-learn==1.8.0  # base classes of xgboost.XGBClassifier
+xgboost-cpu==3.2.0
+mlflow-skinny==3.11.1

@@ -1,0 +1,47 @@
+[project]
+name = "olist-churn"
+version = "0.2.0"
+description = "End-to-end churn prediction system on the Olist e-commerce dataset."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+
+# ── Ruff ───────────────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["venv", ".venv", "mlruns"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+# ── Pytest ─────────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: tests that require a running PostgreSQL instance",
+]
+
+# ── Coverage ───────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+source = ["src"]
+omit = ["src/data/load.py"]  # one-off CSV loader, exercised manually
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = [
+    "if __name__ == .__main__.:",
+]

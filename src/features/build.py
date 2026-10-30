@@ -14,17 +14,14 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, model_validator
 
-# ── Logging ────────────────────────────────────────────────────────────────────
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+from src import config
+from src.logging_config import setup_logging
+
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR       = Path(__file__).parent.parent.parent
-DEFAULT_INPUT  = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
-DEFAULT_OUTPUT = BASE_DIR / "data" / "processed" / "features.parquet"
+DEFAULT_INPUT = config.RFM_FEATURES_PATH
+DEFAULT_OUTPUT = config.FEATURES_PATH
 
 # ── Final column order (fed into the model) ────────────────────────────────────
 FEATURE_COLUMNS = [
@@ -41,42 +38,58 @@ FEATURE_COLUMNS = [
     "churn_label",
 ]
 
+ID_COLUMN = "customer_unique_id"
+TARGET_COLUMN = "churn_label"
+
+# Model inputs, shared by train.py and the API so their column order cannot drift.
+# is_one_time_buyer stays in the feature table but is not a model input: rfm.sql
+# keeps repeat customers only, so the flag is constant (always 0) at this stage.
+MODEL_FEATURES = [
+    col for col in FEATURE_COLUMNS if col not in (ID_COLUMN, TARGET_COLUMN, "is_one_time_buyer")
+]
+
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
 
+
 class RawCustomerFeatures(BaseModel):
     """Schema for one row coming out of sql_features.py (rfm_features.parquet)."""
-    customer_unique_id:       str
-    recency_days:             int   = Field(ge=0)
-    frequency:                int   = Field(ge=1)
-    monetary:                 float = Field(ge=0.0)
-    customer_lifetime_days:   int   = Field(ge=0)
-    avg_days_between_orders:  float = Field(ge=0.0)
-    churn_label:              int   = Field(ge=0, le=1)
+
+    customer_unique_id: str
+    recency_days: int = Field(ge=0)
+    frequency: int = Field(ge=1)
+    monetary: float = Field(ge=0.0)
+    customer_lifetime_days: int = Field(ge=0)
+    avg_days_between_orders: float = Field(ge=0.0)
+    churn_label: int = Field(ge=0, le=1)
 
     model_config = {"strict": True}
 
 
 class EngineeredFeatures(BaseModel):
     """Schema for one row after feature engineering — input to the model."""
-    customer_unique_id:      str
-    recency_days:            int
-    frequency:               int
-    monetary:                float
-    monetary_log:            float  # log1p(monetary) — reduces right skew
-    avg_order_value:         float  # monetary / frequency
-    days_per_order:          float  # customer_lifetime_days / frequency
+
+    customer_unique_id: str
+    recency_days: int
+    frequency: int
+    monetary: float
+    monetary_log: float  # log1p(monetary) — reduces right skew
+    avg_order_value: float  # monetary / frequency
+    days_per_order: float  # customer_lifetime_days / frequency
     avg_days_between_orders: float
-    customer_lifetime_days:  int
-    is_one_time_buyer:       int    # 1 if frequency == 1
-    churn_label:             int
+    customer_lifetime_days: int
+    is_one_time_buyer: int  # 1 if frequency == 1
+    churn_label: int
 
     @model_validator(mode="after")
     def check_no_negatives(self) -> "EngineeredFeatures":
         """All numeric features must be non-negative after engineering."""
         for field in [
-            "recency_days", "frequency", "monetary",
-            "avg_order_value", "days_per_order",
+            "recency_days",
+            "frequency",
+            "monetary",
+            "avg_order_value",
+            "days_per_order",
         ]:
             if getattr(self, field) < 0:
                 raise ValueError(f"Feature '{field}' must be >= 0")
@@ -85,6 +98,7 @@ class EngineeredFeatures(BaseModel):
 
 # ── Pure transformation functions ──────────────────────────────────────────────
 # Each function is pure: takes a DataFrame, returns a new one, never mutates.
+
 
 def add_monetary_log(df: pd.DataFrame) -> pd.DataFrame:
     """log1p transform on monetary to reduce right skew."""
@@ -138,8 +152,11 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     df["avg_days_between_orders"] = df["avg_days_between_orders"].fillna(0.0)
 
     critical_cols = [
-        "recency_days", "frequency", "monetary",
-        "customer_lifetime_days", "churn_label",
+        "recency_days",
+        "frequency",
+        "monetary",
+        "customer_lifetime_days",
+        "churn_label",
     ]
     for col in critical_cols:
         n_nulls = df[col].isna().sum()
@@ -153,32 +170,41 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 
 # ── Schema validation on a sample ─────────────────────────────────────────────
 
-def validate_schema(df: pd.DataFrame, sample_size: int = 500) -> None:
+
+def validate_schema(
+    df: pd.DataFrame,
+    schema: type[BaseModel] = EngineeredFeatures,
+    sample_size: int | None = 500,
+) -> None:
     """
-    Validate a random sample of rows against the EngineeredFeatures schema.
+    Validate rows against a Pydantic schema.
     Catches type errors and business rule violations before saving.
-    Sampling (not full scan) keeps validation fast on large datasets.
+    Sampling (not full scan) keeps validation fast on large datasets;
+    pass sample_size=None to validate every row.
     """
-    sample = df.sample(min(sample_size, len(df)), random_state=42)
-    for _, row in sample.iterrows():
-        EngineeredFeatures(**row.to_dict())
-    logger.info("Pydantic schema validation passed (%d rows sampled).", len(sample))
+    rows = df if sample_size is None else df.sample(min(sample_size, len(df)), random_state=42)
+    # to_dict("records") yields native Python scalars, required by strict schemas
+    for record in rows.to_dict("records"):
+        schema(**record)
+    logger.info("%s validation passed (%d rows checked).", schema.__name__, len(rows))
 
 
 # ── Full pipeline ──────────────────────────────────────────────────────────────
 
+
 def build_features(
-    input_path:  Path = DEFAULT_INPUT,
+    input_path: Path = DEFAULT_INPUT,
     output_path: Path = DEFAULT_OUTPUT,
 ) -> pd.DataFrame:
     """
     Full feature engineering pipeline:
         1. Load rfm_features.parquet
         2. Handle missing values (fail fast on unexpected nulls)
-        3. Apply transformations (all pure functions)
-        4. Select and order final columns
-        5. Validate schema with Pydantic v2
-        6. Save to features.parquet
+        3. Validate every input row against RawCustomerFeatures (strict)
+        4. Apply transformations (all pure functions)
+        5. Select and order final columns
+        6. Validate a sample of output rows against EngineeredFeatures
+        7. Save to features.parquet
 
     Returns:
         pd.DataFrame: engineered features ready for model training
@@ -189,6 +215,7 @@ def build_features(
 
     # Transformations applied in order — each step is independent and pure
     df = handle_missing_values(df)
+    validate_schema(df, schema=RawCustomerFeatures, sample_size=None)
     df = add_monetary_log(df)
     df = add_avg_order_value(df)
     df = add_days_per_order(df)
@@ -209,6 +236,7 @@ def build_features(
 
 
 if __name__ == "__main__":
+    setup_logging()
     df = build_features()
 
     print("\n--- Sample (first 10 rows) ---")

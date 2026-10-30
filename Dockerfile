@@ -1,30 +1,39 @@
-# Multi-stage Docker build for the Olist churn prediction API
+# Multi-stage build for the Olist churn prediction API.
+# The builder resolves dependencies into a virtualenv; the runtime stage only
+# receives that virtualenv and the application code.
+
 FROM python:3.11-slim AS builder
 
-WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements-api.txt .
+RUN pip install -r requirements-api.txt \
+    && find /opt/venv -type d -name "__pycache__" -prune -exec rm -rf {} + \
+    && find /opt/venv -type d -name "tests" -path "*site-packages/*" -prune -exec rm -rf {} +
+
 
 FROM python:3.11-slim AS runtime
 
-WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 \
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq5 && \
-    rm -rf /var/lib/apt/lists/*
+RUN useradd --create-home --uid 1000 app
+WORKDIR /app
 
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-COPY . .
+COPY --from=builder /opt/venv /opt/venv
+COPY --chown=app:app src/ src/
 
+USER app
 EXPOSE 8000
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+
+# Access logs are emitted by the app itself (JSON, with request ids)
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--no-access-log", "--log-config", "src/api/log_config.json"]
