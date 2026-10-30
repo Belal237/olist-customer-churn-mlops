@@ -42,7 +42,7 @@ kaggle datasets download olistbr/brazilian-ecommerce
 docker compose up -d
 
 # Load CSV files into PostgreSQL
-python src/data/load.py
+python -m src.data.load
 ```
 
 ## Raw data

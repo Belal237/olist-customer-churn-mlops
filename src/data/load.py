@@ -1,17 +1,25 @@
-import os
-from pathlib import Path
+"""
+Load the raw Olist CSV files into PostgreSQL.
+
+Each table is dropped and recreated, then bulk-loaded with COPY, which is an
+order of magnitude faster than row-by-row INSERTs on the 1M+ row geolocation
+table. Indexes on the join keys used by rfm.sql are created afterwards.
+
+Pipeline position: data/raw/*.csv → [this file] → PostgreSQL → sql_features.py
+
+Usage:
+    python -m src.data.load
+"""
+
+import logging
 
 import psycopg2
+from psycopg2 import sql
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "port": int(os.getenv("DB_PORT", 5432)),
-    "database": os.getenv("DB_NAME", "olist_db"),
-    "user": os.getenv("DB_USER", "olist_user"),
-    "password": os.getenv("DB_PASSWORD", "olist_pass"),
-}
+from src import config
 
-BASE_DIR = Path(__file__).parent.parent.parent
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 SCHEMAS = {
     "customers": {
@@ -114,30 +122,74 @@ SCHEMAS = {
 }
 
 
-def load_table(conn, table_name: str, schema: dict) -> None:
-    csv_path = BASE_DIR / "src" / "data" / schema["file"]
-    col_defs = ", ".join(f'"{col}" {col_type}' for col, col_type in schema["columns"])
+# Join keys used by src/features/rfm.sql — created once the data is loaded
+INDEXES = {
+    "orders": ["customer_id", "order_status"],
+    "customers": ["customer_unique_id"],
+    "order_items": ["order_id"],
+    "order_payments": ["order_id"],
+    "order_reviews": ["order_id"],
+}
+
+
+def load_table(conn, table_name: str, schema: dict) -> int:
+    """Drop, recreate and bulk-load one table. Returns the loaded row count."""
+    csv_path = config.RAW_DATA_DIR / schema["file"]
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Missing raw file: {csv_path}. "
+            "Download the dataset with: kaggle datasets download olistbr/brazilian-ecommerce"
+        )
+
+    table = sql.Identifier(table_name)
+    col_defs = sql.SQL(", ").join(
+        sql.SQL("{} {}").format(sql.Identifier(col), sql.SQL(col_type))
+        for col, col_type in schema["columns"]
+    )
 
     with conn.cursor() as cur:
-        cur.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
-        cur.execute(f"CREATE TABLE {table_name} ({col_defs})")
+        cur.execute(sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(table))
+        cur.execute(sql.SQL("CREATE TABLE {} ({})").format(table, col_defs))
         with open(csv_path, encoding="utf-8") as f:
-            next(f)  # skip header
-            cur.copy_expert(f"COPY {table_name} FROM STDIN WITH CSV NULL ''", f)
-        conn.commit()
-        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-        n = cur.fetchone()[0]
-        print(f"  {table_name}: {n} lignes")
+            cur.copy_expert(
+                sql.SQL("COPY {} FROM STDIN WITH CSV HEADER NULL ''").format(table),
+                f,
+            )
+        for column in INDEXES.get(table_name, []):
+            cur.execute(
+                sql.SQL("CREATE INDEX {} ON {} ({})").format(
+                    sql.Identifier(f"idx_{table_name}_{column}"),
+                    table,
+                    sql.Identifier(column),
+                )
+            )
+        cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(table))
+        n_rows = cur.fetchone()[0]
+    conn.commit()
+    return n_rows
 
 
-def main():
-    print("Connexion à PostgreSQL...")
-    conn = psycopg2.connect(**DB_CONFIG)
-    print("Chargement des tables :")
-    for table_name, schema in SCHEMAS.items():
-        load_table(conn, table_name, schema)
-    conn.close()
-    print("Done.")
+def main() -> None:
+    logger.info(
+        "Connecting to PostgreSQL at %s:%s/%s",
+        config.POSTGRES_HOST,
+        config.POSTGRES_PORT,
+        config.POSTGRES_DB,
+    )
+    conn = psycopg2.connect(
+        host=config.POSTGRES_HOST,
+        port=config.POSTGRES_PORT,
+        dbname=config.POSTGRES_DB,
+        user=config.POSTGRES_USER,
+        password=config.POSTGRES_PASSWORD,
+    )
+    try:
+        for table_name, schema in SCHEMAS.items():
+            n_rows = load_table(conn, table_name, schema)
+            logger.info("Loaded %-18s %9s rows", table_name, f"{n_rows:,}")
+    finally:
+        conn.close()
+    logger.info("All tables loaded.")
 
 
 if __name__ == "__main__":

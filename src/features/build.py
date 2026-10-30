@@ -14,14 +14,15 @@ import numpy as np
 import pandas as pd
 from pydantic import BaseModel, Field, model_validator
 
+from src import config
+
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent.parent.parent
-DEFAULT_INPUT = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
-DEFAULT_OUTPUT = BASE_DIR / "data" / "processed" / "features.parquet"
+DEFAULT_INPUT = config.RFM_FEATURES_PATH
+DEFAULT_OUTPUT = config.FEATURES_PATH
 
 # ── Final column order (fed into the model) ────────────────────────────────────
 FEATURE_COLUMNS = [

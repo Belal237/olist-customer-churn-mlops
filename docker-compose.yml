@@ -10,7 +10,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./src/data:/data
 
   api:
     build:
@@ -20,11 +19,6 @@ services:
     depends_on:
       - postgres
     environment:
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=olist_db
-      - DB_USER=olist_user
-      - DB_PASSWORD=olist_pass
       - POSTGRES_HOST=postgres
     ports:
       - "8000:8000"

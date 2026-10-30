@@ -13,7 +13,6 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
@@ -21,7 +20,9 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+from src import config
+
+mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -37,11 +38,10 @@ def log_json_event(event: str, **kwargs) -> None:
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent.parent.parent
-FEATURES_PATH = BASE_DIR / "data" / "processed" / "features.parquet"
+FEATURES_PATH = config.FEATURES_PATH
 
 # ── Model URI ──────────────────────────────────────────────────────────────────
-MODEL_URI = "models:/churn-prediction/latest"
+MODEL_URI = config.MODEL_URI
 
 # ── Feature columns (must match train.py order) ────────────────────────────────
 FEATURE_COLUMNS = [

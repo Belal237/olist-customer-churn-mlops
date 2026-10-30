@@ -54,16 +54,16 @@ docker compose up -d
 pip install -r requirements.txt
 
 # 3. Load dataset into PostgreSQL
-python src/data/load.py
+python -m src.data.load
 
 # 4. Extract RFM features from PostgreSQL
-python src/features/sql_features.py
+python -m src.features.sql_features
 
 # 5. Build engineered features
-python src/features/build.py
+python -m src.features.build
 
 # 6. Train the model and log to MLflow
-python src/models/train.py
+python -m src.models.train
 
 # 7. View MLflow results
 mlflow ui --backend-store-uri sqlite:///mlflow.db

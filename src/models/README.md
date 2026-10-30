@@ -17,7 +17,7 @@ data/processed/features.parquet
 ## Run
 
 ```bash
-python src/models/train.py
+python -m src.models.train
 ```
 
 ## View results in MLflow UI

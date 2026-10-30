@@ -49,10 +49,10 @@ One-time buyers (~97% of Olist customers) are excluded from the training set.
 
 ```bash
 # Step 1 — extract RFM features from PostgreSQL
-python src/features/sql_features.py
+python -m src.features.sql_features
 
 # Step 2 — build engineered features
-python src/features/build.py
+python -m src.features.build
 ```
 
 ## Output

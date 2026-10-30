@@ -7,39 +7,23 @@ Pipeline position: RAW DATA → [this file] → rfm_features.parquet → build.p
 """
 
 import logging
-import os
 from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import create_engine, text
+
+from src import config
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-BASE_DIR = Path(__file__).parent.parent.parent
-SQL_PATH = BASE_DIR / "src" / "features" / "rfm.sql"
-DEFAULT_OUTPUT = BASE_DIR / "data" / "processed" / "rfm_features.parquet"
+SQL_PATH = Path(__file__).resolve().parent / "rfm.sql"
+DEFAULT_OUTPUT = config.RFM_FEATURES_PATH
 
-# ── Database configuration ─────────────────────────────────────────────────────
-DB_USER = os.getenv("POSTGRES_USER", "olist_user")
-DB_PASSWORD = os.getenv("POSTGRES_PASSWORD", "olist_pass")
-DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
-DB_PORT = os.getenv("POSTGRES_PORT", "5432")
-DB_NAME = os.getenv("POSTGRES_DB", "olist_db")
-
-DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-
-# Churn threshold
-# The base instruction is to define churn as no purchase in the last 6 months.
-# Set via environment variable so the threshold remains configurable for experiments.
-CHURN_DAYS: int = int(os.getenv("CHURN_DAYS", 180))
-
-# Notes on dataset behavior:
-# - 180 days reflects the requested 6-month churn definition.
-# - The repeat-customer filter (frequency >= 2) is still applied later in SQL.
-# - The feature pipeline remains stable even if the churn threshold changes.
+# Churn window in days — configurable through the CHURN_DAYS env variable.
+CHURN_DAYS: int = config.CHURN_DAYS
 
 
 def get_engine():
@@ -47,8 +31,13 @@ def get_engine():
     Create and return a SQLAlchemy engine connected to PostgreSQL.
     pool_pre_ping=True verifies the connection is alive before each query.
     """
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
-    logger.info("Connected to PostgreSQL: %s:%s/%s", DB_HOST, DB_PORT, DB_NAME)
+    engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+    logger.info(
+        "Connected to PostgreSQL: %s:%s/%s",
+        config.POSTGRES_HOST,
+        config.POSTGRES_PORT,
+        config.POSTGRES_DB,
+    )
     return engine
 
 

@@ -8,8 +8,10 @@ from sklearn.metrics import precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
-# Must be the very first MLflow call — sets tracking and registry to same database
-mlflow.set_tracking_uri("sqlite:///mlflow.db")
+from src import config
+
+# Must be the very first MLflow call — sets tracking and registry to same backend
+mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
 
 # =========================
 # CONFIG
@@ -20,7 +22,7 @@ TEST_SIZE = 0.25
 TARGET = "churn_label"
 ID_COLUMNS = ["customer_unique_id"]
 
-DATA_PATH = "data/processed/features.parquet"
+DATA_PATH = config.FEATURES_PATH
 
 
 # =========================
@@ -95,7 +97,7 @@ def train() -> None:
     print(f"Class imbalance ratio (neg/pos): {ratio:.3f}")
 
     # 5. MLflow experiment
-    mlflow.set_experiment("churn-prediction")
+    mlflow.set_experiment(config.MLFLOW_EXPERIMENT_NAME)
 
     with mlflow.start_run():
         # 6. Build model
@@ -125,7 +127,7 @@ def train() -> None:
         mlflow.sklearn.log_model(
             sk_model=model,
             artifact_path="model",
-            registered_model_name="churn-prediction",
+            registered_model_name=config.REGISTERED_MODEL_NAME,
         )
 
         print("Training complete")
