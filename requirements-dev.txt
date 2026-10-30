@@ -1,0 +1,10 @@
+-r requirements.txt
+
+# Tests
+pytest==9.0.3
+pytest-cov==7.1.0
+httpx2==2.10.0  # HTTP client used by Starlette's TestClient
+
+# Code quality
+ruff==0.17.3
+pre-commit==4.7.0
