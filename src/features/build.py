@@ -39,6 +39,16 @@ FEATURE_COLUMNS = [
     "churn_label",
 ]
 
+ID_COLUMN = "customer_unique_id"
+TARGET_COLUMN = "churn_label"
+
+# Model inputs, shared by train.py and the API so their column order cannot drift.
+# is_one_time_buyer stays in the feature table but is not a model input: rfm.sql
+# keeps repeat customers only, so the flag is constant (always 0) at this stage.
+MODEL_FEATURES = [
+    col for col in FEATURE_COLUMNS if col not in (ID_COLUMN, TARGET_COLUMN, "is_one_time_buyer")
+]
+
 
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
 

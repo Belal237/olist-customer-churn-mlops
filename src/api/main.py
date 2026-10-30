@@ -15,12 +15,13 @@ import time
 from contextlib import asynccontextmanager
 
 import mlflow
-import mlflow.sklearn
+import mlflow.xgboost
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from src import config
+from src.features.build import MODEL_FEATURES
 
 mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
 
@@ -42,19 +43,6 @@ FEATURES_PATH = config.FEATURES_PATH
 
 # ── Model URI ──────────────────────────────────────────────────────────────────
 MODEL_URI = config.MODEL_URI
-
-# ── Feature columns (must match train.py order) ────────────────────────────────
-FEATURE_COLUMNS = [
-    "recency_days",
-    "frequency",
-    "monetary",
-    "monetary_log",
-    "avg_order_value",
-    "days_per_order",
-    "avg_days_between_orders",
-    "customer_lifetime_days",
-    "is_one_time_buyer",
-]
 
 
 # ── Application state ──────────────────────────────────────────────────────────
@@ -81,7 +69,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Loading model from MLflow Registry: %s", MODEL_URI)
     try:
-        state.model = mlflow.sklearn.load_model(MODEL_URI)
+        state.model = mlflow.xgboost.load_model(MODEL_URI)
         state.model_version = MODEL_URI
         logger.info("Model loaded successfully.")
     except Exception as e:
@@ -196,7 +184,7 @@ def predict(request: PredictRequest) -> PredictResponse:
             detail=f"Customer '{request.customer_id}' not found in feature store.",
         )
 
-    X = customer_row[FEATURE_COLUMNS].values
+    X = customer_row[MODEL_FEATURES].values
     churn_proba = float(state.model.predict_proba(X)[0][1])
     churn_pred = int(state.model.predict(X)[0])
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -264,7 +252,7 @@ def batch_predict(request: BatchPredictRequest) -> BatchPredictResponse:
             )
             continue
 
-        X = indexed.loc[cid, FEATURE_COLUMNS].values.reshape(1, -1)
+        X = indexed.loc[cid, MODEL_FEATURES].values.reshape(1, -1)
         churn_proba = float(state.model.predict_proba(X)[0][1])
         churn_pred = int(state.model.predict(X)[0])
 

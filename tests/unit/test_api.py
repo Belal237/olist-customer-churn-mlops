@@ -48,7 +48,7 @@ def client(monkeypatch, tmp_path, fake_feature_store, fake_model):
 
     monkeypatch.setattr("src.api.main.FEATURES_PATH", features_path)
     monkeypatch.setattr(
-        "src.api.main.mlflow.sklearn.load_model",
+        "src.api.main.mlflow.xgboost.load_model",
         MagicMock(return_value=fake_model),
     )
 
