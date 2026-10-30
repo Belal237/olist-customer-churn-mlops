@@ -162,16 +162,22 @@ def handle_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 # ── Schema validation on a sample ─────────────────────────────────────────────
 
 
-def validate_schema(df: pd.DataFrame, sample_size: int = 500) -> None:
+def validate_schema(
+    df: pd.DataFrame,
+    schema: type[BaseModel] = EngineeredFeatures,
+    sample_size: int | None = 500,
+) -> None:
     """
-    Validate a random sample of rows against the EngineeredFeatures schema.
+    Validate rows against a Pydantic schema.
     Catches type errors and business rule violations before saving.
-    Sampling (not full scan) keeps validation fast on large datasets.
+    Sampling (not full scan) keeps validation fast on large datasets;
+    pass sample_size=None to validate every row.
     """
-    sample = df.sample(min(sample_size, len(df)), random_state=42)
-    for _, row in sample.iterrows():
-        EngineeredFeatures(**row.to_dict())
-    logger.info("Pydantic schema validation passed (%d rows sampled).", len(sample))
+    rows = df if sample_size is None else df.sample(min(sample_size, len(df)), random_state=42)
+    # to_dict("records") yields native Python scalars, required by strict schemas
+    for record in rows.to_dict("records"):
+        schema(**record)
+    logger.info("%s validation passed (%d rows checked).", schema.__name__, len(rows))
 
 
 # ── Full pipeline ──────────────────────────────────────────────────────────────
@@ -185,10 +191,11 @@ def build_features(
     Full feature engineering pipeline:
         1. Load rfm_features.parquet
         2. Handle missing values (fail fast on unexpected nulls)
-        3. Apply transformations (all pure functions)
-        4. Select and order final columns
-        5. Validate schema with Pydantic v2
-        6. Save to features.parquet
+        3. Validate every input row against RawCustomerFeatures (strict)
+        4. Apply transformations (all pure functions)
+        5. Select and order final columns
+        6. Validate a sample of output rows against EngineeredFeatures
+        7. Save to features.parquet
 
     Returns:
         pd.DataFrame: engineered features ready for model training
@@ -199,6 +206,7 @@ def build_features(
 
     # Transformations applied in order — each step is independent and pure
     df = handle_missing_values(df)
+    validate_schema(df, schema=RawCustomerFeatures, sample_size=None)
     df = add_monetary_log(df)
     df = add_avg_order_value(df)
     df = add_days_per_order(df)

@@ -183,3 +183,12 @@ def test_build_features_output_shape(tmp_path):
     assert output_path.exists()
     # No rows should be lost
     assert len(result) == 3
+
+
+def test_build_features_rejects_wrongly_typed_input(tmp_path, base_df):
+    """Strict input schema: a float recency means the upstream SQL contract broke."""
+    bad = base_df.assign(recency_days=[10.5, 200.0, 50.0])
+    input_path = tmp_path / "rfm_features.parquet"
+    bad.to_parquet(input_path, index=False)
+    with pytest.raises(ValidationError, match="recency_days"):
+        build_features(input_path=input_path, output_path=tmp_path / "out.parquet")
