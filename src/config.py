@@ -45,7 +45,8 @@ CHURN_DAYS = int(os.getenv("CHURN_DAYS", "180"))
 CHURN_DECISION_THRESHOLD = float(os.getenv("CHURN_DECISION_THRESHOLD", "0.5"))
 
 # ── MLflow ─────────────────────────────────────────────────────────────────────
-MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", f"sqlite:///{BASE_DIR / 'mlflow.db'}")
+# Tracking server started by docker compose (see docker-compose.yml)
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "churn-prediction")
 REGISTERED_MODEL_NAME = os.getenv("REGISTERED_MODEL_NAME", "churn-prediction")
 MODEL_URI = os.getenv("MODEL_URI", f"models:/{REGISTERED_MODEL_NAME}/latest")

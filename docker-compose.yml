@@ -3,28 +3,58 @@ services:
     image: postgres:15
     container_name: olist_postgres
     environment:
-      POSTGRES_USER: olist_user
-      POSTGRES_PASSWORD: olist_pass
-      POSTGRES_DB: olist_db
+      POSTGRES_USER: ${POSTGRES_USER:-olist_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-olist_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-olist_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Tracking server + model registry. --serve-artifacts proxies artifact
+  # uploads/downloads, so clients never depend on host file paths.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.11.1
+    container_name: olist_mlflow
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --serve-artifacts
+      --allowed-hosts localhost,localhost:*,127.0.0.1:*,mlflow,mlflow:5000
+    ports:
+      - "5001:5000"  # 5000 is taken by AirPlay on macOS
+    volumes:
+      - mlflow_data:/mlflow
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    image: olist-churn-api:latest
     container_name: olist_api
     depends_on:
-      - postgres
+      mlflow:
+        condition: service_healthy
     environment:
-      - POSTGRES_HOST=postgres
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      CHURN_DECISION_THRESHOLD: ${CHURN_DECISION_THRESHOLD:-0.5}
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
-    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      - ./data/processed:/app/data/processed:ro
 
 volumes:
   postgres_data:
+  mlflow_data:
