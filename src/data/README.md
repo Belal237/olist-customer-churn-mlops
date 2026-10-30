@@ -1,58 +1,52 @@
 # Data
 
-Data loading, validation and SQL feature extraction for the Olist churn system.
+Loads the raw Olist CSV files into PostgreSQL.
 
 ## Pipeline position
-Kaggle (raw CSV files)
-└── load.py → PostgreSQL (olist_db)
-└── sql_features.py (rfm.sql)
-└── data/processed/rfm_features.parquet
-└── src/features/build.py
 
-## Files
-
-| File | Role |
-|------|------|
-| `load.py` | Loads raw Olist CSV files into PostgreSQL |
-| `sql_features.py` | Executes rfm.sql, validates output, saves rfm_features.parquet |
-
-## Dataset
-
-**Olist Brazilian E-Commerce** — https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce
-
-| Table | Description |
-|-------|-------------|
-| orders | 99k orders with status and timestamps |
-| customers | Customer unique IDs and zip codes |
-| order_items | Products and sellers per order |
-| order_payments | Actual payment values per order |
-| order_reviews | Customer satisfaction scores |
-| products | Product categories and dimensions |
-| sellers | Seller locations |
-| geolocation | Brazilian zip code coordinates |
-| product_category_name_translation | Category name translations |
+```
+data/raw/*.csv  →  load.py  →  PostgreSQL (olist_db)  →  src/features/
+```
 
 ## Setup
 
 ```bash
-# Download dataset via Kaggle API
-kaggle datasets download olistbr/brazilian-ecommerce
+# Download the dataset (requires a Kaggle API token in ~/.kaggle/kaggle.json)
+kaggle datasets download olistbr/brazilian-ecommerce --unzip -p data/raw
 
-# Start PostgreSQL
-docker compose up -d
-
-# Load CSV files into PostgreSQL
+# Start PostgreSQL, then load every table
+make up
 python -m src.data.load
 ```
 
-## Raw data
+`load.py` drops and recreates each table, bulk-loads it with `COPY` (the
+geolocation table has 1M rows) and creates indexes on the join keys used by
+`rfm.sql`. Running it again is safe and gives the same result.
 
-Raw CSV files are stored in `data/raw/` and excluded from Git via `.gitignore`.
-Never commit raw data to the repository.
+## Tables
 
-## Processed data
+| Table | Rows | Description |
+|-------|-----:|-------------|
+| `orders` | 99,441 | Order status and timestamps |
+| `customers` | 99,441 | One row per (order-level) `customer_id`, linked to a `customer_unique_id` |
+| `order_items` | 112,650 | Products and sellers per order |
+| `order_payments` | 103,886 | One row per payment — an order can have several |
+| `order_reviews` | 99,224 | Review scores and comments |
+| `products` | 32,951 | Product categories and dimensions |
+| `sellers` | 3,095 | Seller locations |
+| `geolocation` | 1,000,163 | Zip-code coordinates |
+| `product_category` | 71 | Portuguese → English category names |
 
-| File | Description | Rows | Columns |
-|------|-------------|------|---------|
-| `data/processed/rfm_features.parquet` | RFM aggregates + churn label | 2,226 | 7 |
-| `data/processed/features.parquet` | Engineered features ready for training | 2,226 | 11 |
+Two schema details matter for feature engineering:
+
+- **`customer_id` is per order.** The same person gets a new `customer_id` on
+  each order; `customer_unique_id` identifies the customer. All features are
+  aggregated by `customer_unique_id`.
+- **`order_payments` is per payment, not per order.** Vouchers and split
+  payments create several rows for one order; it must be aggregated before any
+  join (see [incident 04](../../docs/incidents/04-sql-join-fan-out.md)).
+
+## Data policy
+
+Raw and processed data stay out of Git (`data/raw/`, `data/processed/` are
+ignored). Only code and small test fixtures are versioned.
